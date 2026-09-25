@@ -80,6 +80,11 @@ body {
 
 /* Estilos de Impressão e Geração de PDF */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
   header,
   aside,
   #sidebar-backdrop,

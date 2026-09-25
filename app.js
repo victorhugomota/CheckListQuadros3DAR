@@ -1525,12 +1525,35 @@ function preloadLogo() {
     });
 }
 
-function chunkArray(arr, size) {
-  const chunks = [];
-  for (let i = 0; i < arr.length; i += size) {
-    chunks.push(arr.slice(i, i + size));
-  }
-  return chunks;
+// ==========================================
+// 13. EXPORTAÇÃO PDF VETORIAL (JSPDF + AUTOTABLE) E EXCEL
+// ==========================================
+function getLogoPngDataUrl() {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), 1500);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      clearTimeout(timer);
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 980;
+        canvas.height = 582;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        resolve(null);
+      }
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      resolve(null);
+    };
+    img.src = cachedLogoSvgDataUrl || 'logo 3d.svg';
+  });
 }
 
 window.imprimirRelatorio = function() {
@@ -1544,286 +1567,484 @@ window.exportarPDF = async function() {
     return;
   }
 
-  showToast("Gerando laudo técnico em PDF...", "info");
+  showToast("Gerando laudo técnico vetorial em PDF...", "info");
 
-  // Container de renderização em fluxo normal para evitar o bug de colapso de altura zero no html2pdf
-  const renderWrapper = document.createElement('div');
-  renderWrapper.id = 'pdf-export-wrapper';
-  renderWrapper.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#ffffff;z-index:999999;overflow-y:auto;padding:16px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;';
+  // Verifica disponibilidade da biblioteca jsPDF
+  const jsPdfConstructor = (typeof window.jspdf !== 'undefined' && window.jspdf.jsPDF) ? 
+    window.jspdf.jsPDF : (typeof window.jsPDF !== 'undefined' ? window.jsPDF : null);
 
-  const progressNotice = document.createElement('div');
-  progressNotice.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#007dc5;color:#ffffff;padding:12px 20px;border-radius:8px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.35);font-weight:600;font-size:13px;z-index:1000000;display:flex;align-items:center;gap:10px;font-family:\'Inter\',sans-serif;';
-  progressNotice.innerHTML = '<i class="fas fa-circle-notch fa-spin text-base"></i> Renderizando Laudo em PDF...';
-  renderWrapper.appendChild(progressNotice);
-
-  const renderContent = document.createElement('div');
-  renderContent.id = 'pdf-render-content';
-  renderContent.style.cssText = 'width:780px;background:#ffffff;color:#1e293b;padding:24px;box-sizing:border-box;font-family:\'Inter\',Arial,sans-serif;line-height:1.35;box-shadow:0 0 10px rgba(0,0,0,0.08);';
-  renderWrapper.appendChild(renderContent);
-
-  document.body.appendChild(renderWrapper);
-  window.scrollTo(0, 0);
-
-  const totalNaoConformes = report.estatisticas.totalNaoConformes !== undefined ? 
-    report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
-
-  const logoSrc = cachedLogoSvgDataUrl || 'logo 3d.svg';
-
-  // Coleta de todas as fotos para o anexo fotográfico do PDF
-  const fotosPdf = [];
-  if (report.items) {
-    Object.keys(report.items).forEach(k => {
-      const it = report.items[k];
-      if (it.fotos && it.fotos.length > 0) {
-        it.fotos.forEach(foto => {
-          fotosPdf.push({
-            src: foto,
-            item: it.item,
-            secao: it.secao,
-            conforme: it.conforme,
-            motivo: it.motivo || ''
-          });
-        });
-      }
-    });
+  if (!jsPdfConstructor) {
+    console.warn("jsPDF não encontrado, acionando impressão nativa do navegador.");
+    window.print();
+    return;
   }
-  if (report.fotosObservacoes && report.fotosObservacoes.length > 0) {
-    report.fotosObservacoes.forEach(foto => {
-      fotosPdf.push({
-        src: foto,
-        item: 'Observações Gerais',
-        secao: 'Observações',
-        conforme: null,
-        motivo: report.observacoes || 'Registro complementar'
-      });
-    });
-  }
-
-  // Montagem do layout puramente em tabelas (compatibilidade total com html2canvas)
-  renderContent.innerHTML = `
-    <div style="font-family:'Inter',Arial,sans-serif;color:#1e293b;background:#ffffff;font-size:11px;">
-      <!-- Header do Relatório -->
-      <table style="width:100%;border-bottom:2px solid #007dc5;padding-bottom:12px;margin-bottom:14px;border-collapse:collapse;">
-        <tr>
-          <td style="width:60%;vertical-align:middle;">
-            <table style="border-collapse:collapse;">
-              <tr>
-                <td style="vertical-align:middle;padding-right:12px;">
-                  <img src="${logoSrc}" style="height:48px;width:auto;max-width:180px;object-fit:contain;display:block;" alt="3D Ar">
-                </td>
-                <td style="vertical-align:middle;">
-                  <div style="font-size:16px;font-weight:800;color:#007dc5;text-transform:uppercase;line-height:1.2;">3D Ar Condicionado</div>
-                  <div style="font-size:10px;color:#64748b;font-weight:500;margin-top:2px;">Checklist de Conferência de Quadros Elétricos</div>
-                </td>
-              </tr>
-            </table>
-          </td>
-          <td style="width:40%;text-align:right;vertical-align:middle;">
-            <div style="font-size:17px;font-weight:800;color:#0f172a;">${report.codigoRelatorio}</div>
-            <div style="font-size:10.5px;color:#64748b;margin-top:2px;">Emissão: ${report.dataHoraFormatada}</div>
-          </td>
-        </tr>
-      </table>
-
-      <!-- Bloco de Metadados em Tabela -->
-      <table style="width:100%;border-collapse:collapse;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:14px;font-size:11px;">
-        <tr>
-          <td style="width:50%;padding:8px 12px;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;vertical-align:top;">
-            <span style="color:#64748b;font-size:10px;display:block;font-weight:600;text-transform:uppercase;">Obra / Local</span>
-            <strong style="color:#0f172a;font-size:12px;">${escapeHtml(report.obra)}</strong>
-          </td>
-          <td style="width:50%;padding:8px 12px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
-            <span style="color:#64748b;font-size:10px;display:block;font-weight:600;text-transform:uppercase;">Identificação / Tag do Quadro</span>
-            <strong style="color:#0f172a;font-size:12px;">${escapeHtml(report.quadro || 'Geral')}</strong>
-          </td>
-        </tr>
-        <tr>
-          <td style="width:50%;padding:8px 12px;border-right:1px solid #e2e8f0;vertical-align:top;">
-            <span style="color:#64748b;font-size:10px;display:block;font-weight:600;text-transform:uppercase;">Inspetor Responsável</span>
-            <strong style="color:#007dc5;font-size:12px;">${escapeHtml(report.inspetor)}</strong>
-          </td>
-          <td style="width:50%;padding:8px 12px;vertical-align:top;">
-            <span style="color:#64748b;font-size:10px;display:block;font-weight:600;text-transform:uppercase;">Status de Conformidade</span>
-            <strong style="color:${totalNaoConformes === 0 ? '#166534' : '#991b1b'};font-size:12px;">
-              ${report.estatisticas.percentualConformidade}% Conforme (${totalNaoConformes} Não Conformidade(s))
-            </strong>
-          </td>
-        </tr>
-      </table>
-
-      <!-- Tabelas do Checklist por Seção -->
-      ${CHECKLIST_SECTIONS.map(sec => `
-        <div style="margin-bottom:14px;page-break-inside:avoid;">
-          <div style="background:#f1f5f9;padding:6px 10px;font-size:11px;font-weight:700;color:#0f172a;border-left:4px solid #007dc5;">
-            ${sec.title}
-          </div>
-          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;">
-            <thead>
-              <tr style="background:#f8fafc;border-bottom:1px solid #cbd5e1;text-align:left;">
-                <th style="padding:5px 6px;width:44%;color:#475569;font-weight:700;">Item de Conferência</th>
-                <th style="padding:5px 6px;width:20%;text-align:center;color:#475569;font-weight:700;">Status</th>
-                <th style="padding:5px 6px;width:36%;color:#475569;font-weight:700;">Apontamento / Detalhe</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${sec.items.map((itemText, idx) => {
-                const key = `${sec.id}_item_${idx}`;
-                const item = report.items ? report.items[key] : null;
-                const status = item ? item.status : null;
-                const motivo = item ? item.motivo : '';
-                const fotos = item ? item.fotos || [] : [];
-                const ehDanificado = isItemDanificado(itemText);
-                const conforme = isItemConforme(itemText, status);
-
-                let statusLabel = '-';
-                let statusColor = '#64748b';
-                let statusBg = '#f1f5f9';
-
-                if (status !== null) {
-                  if (ehDanificado) {
-                    statusLabel = status === 'nao' ? 'NÃO (Sem Danos)' : 'SIM (Danificado)';
-                    statusColor = status === 'nao' ? '#166534' : '#991b1b';
-                    statusBg = status === 'nao' ? '#dcfce7' : '#fee2e2';
-                  } else {
-                    statusLabel = status === 'sim' ? 'SIM (Conforme)' : 'NÃO (Inconforme)';
-                    statusColor = status === 'sim' ? '#166534' : '#991b1b';
-                    statusBg = status === 'sim' ? '#dcfce7' : '#fee2e2';
-                  }
-                }
-
-                return `
-                  <tr style="border-bottom:1px solid #e2e8f0;background:${conforme === false ? '#fef2f2' : 'transparent'};page-break-inside:avoid;">
-                    <td style="padding:4px 6px;font-weight:${conforme === false ? '600' : 'normal'};color:${conforme === false ? '#991b1b' : '#334155'};">
-                      ${itemText}
-                      ${fotos.length > 0 ? 
-                        `<span style="display:inline-block;padding:1px 4px;font-size:8px;background:#e0f2fe;color:#0369a1;border-radius:3px;margin-left:4px;font-weight:bold;">📷 ${fotos.length} foto(s)</span>` : ''}
-                    </td>
-                    <td style="padding:4px 6px;text-align:center;">
-                      <span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:bold;background:${statusBg};color:${statusColor};">
-                        ${statusLabel}
-                      </span>
-                    </td>
-                    <td style="padding:4px 6px;color:${conforme === false ? '#991b1b' : '#64748b'};font-size:9.5px;">
-                      ${motivo ? escapeHtml(motivo) : (conforme === true ? 'Conforme' : '-')}
-                    </td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      `).join('')}
-
-      <!-- Anexo Fotográfico em Tabela de 2 Colunas -->
-      ${fotosPdf.length > 0 ? `
-        <div style="margin-top:14px;page-break-inside:auto;">
-          <div style="background:#f1f5f9;padding:6px 10px;font-size:11px;font-weight:700;color:#0f172a;border-left:4px solid #007dc5;margin-bottom:8px;">
-            Anexo Fotográfico de Evidências Técnicas (${fotosPdf.length} foto(s))
-          </div>
-          <table style="width:100%;border-collapse:collapse;">
-            ${chunkArray(fotosPdf, 2).map(pair => `
-              <tr style="page-break-inside:avoid;">
-                ${pair.map(f => `
-                  <td style="width:50%;padding:4px;vertical-align:top;">
-                    <table style="width:100%;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;border-collapse:collapse;overflow:hidden;">
-                      <tr>
-                        <td style="padding:4px;background:#f8fafc;text-align:center;">
-                          <img src="${f.src}" style="max-height:130px;max-width:100%;height:130px;object-fit:contain;display:block;margin:0 auto;" alt="Foto Evidência">
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding:6px;font-size:9px;line-height:1.3;border-top:1px solid #e2e8f0;">
-                          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-                            <span style="font-weight:700;color:#007dc5;text-transform:uppercase;">${f.secao}</span>
-                            <span style="font-weight:bold;font-size:8px;padding:1px 4px;border-radius:3px;background:${f.conforme === false ? '#fee2e2' : (f.conforme === true ? '#dcfce7' : '#e0f2fe')};color:${f.conforme === false ? '#991b1b' : (f.conforme === true ? '#166534' : '#0369a1')};">
-                              ${f.conforme === false ? 'NÃO CONFORME' : (f.conforme === true ? 'CONFORME' : 'OBSERVAÇÃO')}
-                            </span>
-                          </div>
-                          <strong style="color:#0f172a;display:block;margin-bottom:1px;">${f.item}</strong>
-                          <span style="color:#475569;">${escapeHtml(f.motivo || 'Registro fotográfico técnico')}</span>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                `).join('')}
-                ${pair.length === 1 ? '<td style="width:50%;padding:4px;"></td>' : ''}
-              </tr>
-            `).join('')}
-          </table>
-        </div>
-      ` : ''}
-
-      <!-- Observações Complementares -->
-      <div style="margin-top:12px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:10.5px;page-break-inside:avoid;">
-        <strong style="color:#0f172a;display:block;margin-bottom:3px;">Observações Complementares:</strong>
-        <p style="margin:0;color:#475569;white-space:pre-line;">${escapeHtml(report.observacoes || 'Sem observações adicionais.')}</p>
-      </div>
-
-      <!-- Assinatura do Inspetor Responsável -->
-      <table style="width:100%;margin-top:18px;border-top:1px solid #cbd5e1;padding-top:10px;border-collapse:collapse;page-break-inside:avoid;">
-        <tr>
-          <td style="width:50%;vertical-align:bottom;">
-            <p style="font-size:8.5px;color:#94a3b8;margin:0;">Relatório gerado via Sistema Checklist 3D Ar Condicionado</p>
-            <p style="font-size:8.5px;color:#94a3b8;margin:2px 0 0 0;">ID Autenticação: ${report.id}</p>
-          </td>
-          <td style="width:50%;text-align:center;vertical-align:bottom;">
-            ${report.assinatura ? `<img src="${report.assinatura}" style="height:42px;max-width:180px;object-fit:contain;margin-bottom:2px;" alt="Assinatura">` : `<div style="height:42px;"></div>`}
-            <div style="border-top:1px solid #0f172a;width:190px;margin:0 auto;padding-top:2px;font-size:10px;font-weight:bold;color:#0f172a;">
-              ${escapeHtml(report.inspetor)}
-            </div>
-            <span style="font-size:8.5px;color:#64748b;">Responsável Técnico / Conferente</span>
-          </td>
-        </tr>
-      </table>
-    </div>
-  `;
 
   try {
-    if (document.fonts) {
-      await document.fonts.ready;
+    // 1. Inicializa documento PDF com precisão milimétrica A4 Retrato
+    const doc = new jsPdfConstructor({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait'
+    });
+
+    const totalNaoConformes = report.estatisticas.totalNaoConformes !== undefined ? 
+      report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
+    const isConformeGeral = totalNaoConformes === 0;
+
+    // 2. Renderização do Cabeçalho Oficial
+    const logoPng = await getLogoPngDataUrl();
+    if (logoPng) {
+      try {
+        doc.addImage(logoPng, 'PNG', 14, 11, 35, 20.8);
+      } catch (e) {
+        console.warn("Erro ao renderizar imagem do logo:", e);
+      }
     }
-    const imgs = renderContent.querySelectorAll('img');
-    await Promise.all(Array.from(imgs).map(img => {
-      if (img.complete) return Promise.resolve();
-      return new Promise(res => {
-        img.onload = res;
-        img.onerror = res;
-      });
-    }));
 
-    await new Promise(r => setTimeout(r, 200));
+    // Título da Empresa e Laudo Técnico
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(0, 125, 197); // Azul 3D Ar
+    doc.text('3D AR CONDICIONADO', 52, 18);
 
-    const cleanObra = (report.obra || 'Geral').replace(/[^a-zA-Z0-9]/g, '_');
-    const opt = {
-      margin: [8, 8, 8, 8],
-      filename: `Relatorio_N_${report.numero}_${cleanObra}_3DAr.pdf`,
-      image: { type: 'jpeg', quality: 0.95 },
-      html2canvas: {
-        scale: 1.5,
-        useCORS: true,
-        letterRendering: true,
-        logging: false,
-        scrollX: 0,
-        scrollY: 0
-      },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] }
-    };
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Checklist de Conferência e Liberação de Quadros Elétricos', 52, 23.5);
 
-    if (typeof html2pdf !== 'undefined') {
-      await html2pdf().from(renderContent).set(opt).save();
-      showToast("PDF com fotos gerado e baixado com sucesso!", "success");
+    doc.setFontSize(7.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text('Sistema de Controle de Qualidade e Registro de Não Conformidades', 52, 28);
+
+    // Badge com o Código do Relatório (Lado Direito)
+    doc.setFillColor(240, 249, 255);
+    doc.setDrawColor(0, 125, 197);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(138, 11, 58, 12, 1.8, 1.8, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11.5);
+    doc.setTextColor(0, 125, 197);
+    doc.text(report.codigoRelatorio, 167, 18.5, { align: 'center' });
+
+    // Data de emissão
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(`Emissão: ${report.dataHoraFormatada}`, 196, 27.5, { align: 'right' });
+
+    // Linha divisória de destaque
+    doc.setDrawColor(0, 125, 197);
+    doc.setLineWidth(0.5);
+    doc.line(14, 33.5, 196, 33.5);
+
+    // 3. Card de Metadados (Obra, Tag, Inspetor, Conformidade)
+    const obraText = report.obra || 'Obra não informada';
+    const obraLines = doc.splitTextToSize(obraText, 84);
+    const boxHeight = Math.max(28, 14 + (obraLines.length * 4) + 10);
+    const metaStartY = 36.5;
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(14, metaStartY, 182, boxHeight, 2, 2, 'FD');
+
+    // Divisórias internas do card
+    const metaMidY = metaStartY + (boxHeight / 2);
+    doc.line(105, metaStartY, 105, metaStartY + boxHeight); // Divisória vertical
+    doc.line(14, metaMidY, 196, metaMidY); // Divisória horizontal
+
+    // Quadrante 1: Obra / Local
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('OBRA / LOCAL:', 18, metaStartY + 5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.2);
+    doc.setTextColor(15, 23, 42);
+    doc.text(obraLines, 18, metaStartY + 9.5);
+
+    // Quadrante 2: Identificação do Quadro
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('IDENTIFICAÇÃO / TAG DO QUADRO:', 109, metaStartY + 5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.2);
+    doc.setTextColor(15, 23, 42);
+    doc.text(report.quadro || 'Geral', 109, metaStartY + 9.5);
+
+    // Quadrante 3: Inspetor Responsável
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('INSPETOR TÉCNICO RESPONSÁVEL:', 18, metaMidY + 4.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(0, 125, 197);
+    doc.text(report.inspetor, 18, metaMidY + 9);
+
+    // Quadrante 4: Status Geral de Conformidade
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('STATUS GERAL DE CONFORMIDADE:', 109, metaMidY + 4.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    if (isConformeGeral) {
+      doc.setTextColor(22, 101, 52); // Verde
+      doc.text('100% CONFORME (Sem pendências)', 109, metaMidY + 9);
     } else {
-      throw new Error("Biblioteca html2pdf não disponível");
+      doc.setTextColor(153, 27, 27); // Vermelho
+      doc.text(`${report.estatisticas.percentualConformidade}% CONFORME (${totalNaoConformes} NÃO CONFORMIDADE(S))`, 109, metaMidY + 9);
     }
+
+    let currentY = metaStartY + boxHeight + 5.5;
+
+    // 4. Tabelas do Checklist por Seção
+    CHECKLIST_SECTIONS.forEach((sec) => {
+      // Caso a seção vá iniciar muito no final da folha, quebra para a próxima
+      if (currentY > 245) {
+        doc.addPage();
+        currentY = 18;
+      }
+
+      // Faixa título da seção
+      doc.setFillColor(241, 245, 249);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(14, currentY, 182, 6.5, 1, 1, 'FD');
+
+      // Detalhe azul lateral
+      doc.setFillColor(0, 125, 197);
+      doc.rect(14, currentY, 3, 6.5, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(sec.title.toUpperCase(), 20, currentY + 4.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`${sec.items.length} itens verificados`, 193, currentY + 4.5, { align: 'right' });
+
+      currentY += 7.8;
+
+      // Monta as linhas da tabela desta seção
+      const rowsData = sec.items.map((itemText, idx) => {
+        const key = `${sec.id}_item_${idx}`;
+        const item = report.items ? report.items[key] : null;
+        const status = item ? item.status : null;
+        const motivo = item ? item.motivo : '';
+        const fotos = item ? item.fotos || [] : [];
+        const ehDanificado = isItemDanificado(itemText);
+        const conforme = isItemConforme(itemText, status);
+
+        let statusText = '-';
+        if (status !== null) {
+          if (ehDanificado) {
+            statusText = status === 'nao' ? 'NÃO (Sem Danos)' : 'SIM (Danificado)';
+          } else {
+            statusText = status === 'sim' ? 'SIM (Conforme)' : 'NÃO (Inconforme)';
+          }
+        }
+
+        let itemDisplay = itemText;
+        if (fotos.length > 0) {
+          itemDisplay += `\n[📷 ${fotos.length} foto(s) anexada(s)]`;
+        }
+
+        const detalheText = motivo || (conforme === true ? 'Conforme / Sem apontamento' : '-');
+
+        return {
+          item: itemDisplay,
+          status: statusText,
+          detalhe: detalheText,
+          conforme: conforme
+        };
+      });
+
+      doc.autoTable({
+        startY: currentY,
+        margin: { left: 14, right: 14 },
+        head: [['Item de Conferência', 'Status', 'Apontamento / Detalhe da Não Conformidade']],
+        body: rowsData.map(r => [r.item, r.status, r.detalhe]),
+        theme: 'grid',
+        headStyles: {
+          fillColor: [0, 125, 197],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 7.5,
+          cellPadding: 1.8
+        },
+        styles: {
+          font: 'helvetica',
+          fontSize: 7.2,
+          textColor: [30, 41, 59],
+          cellPadding: 1.8,
+          lineColor: [226, 232, 240],
+          lineWidth: 0.15
+        },
+        columnStyles: {
+          0: { cellWidth: 82 },
+          1: { cellWidth: 38, halign: 'center' },
+          2: { cellWidth: 62 }
+        },
+        didParseCell: function(data) {
+          if (data.section === 'body') {
+            const row = rowsData[data.row.index];
+            if (row && row.conforme === false) {
+              data.cell.styles.fillColor = [254, 242, 242]; // Fundo vermelho suave
+              data.cell.styles.textColor = [153, 27, 27];
+              data.cell.styles.fontStyle = 'bold';
+            } else if (data.column.index === 1 && row && row.conforme === true) {
+              data.cell.styles.textColor = [22, 101, 52]; // Texto status verde
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        }
+      });
+
+      currentY = doc.lastAutoTable.finalY + 5;
+    });
+
+    // 5. Observações Gerais
+    if (report.observacoes && report.observacoes.trim()) {
+      const obsLines = doc.splitTextToSize(report.observacoes.trim(), 174);
+      const obsBoxHeight = Math.max(15, (obsLines.length * 3.6) + 11);
+
+      if (currentY + obsBoxHeight > 270) {
+        doc.addPage();
+        currentY = 18;
+      }
+
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(14, currentY, 182, obsBoxHeight, 1.8, 1.8, 'FD');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(0, 125, 197);
+      doc.text('OBSERVAÇÕES COMPLEMENTARES:', 18, currentY + 4.8);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.2);
+      doc.setTextColor(51, 65, 85);
+      doc.text(obsLines, 18, currentY + 9.5);
+
+      currentY += obsBoxHeight + 5;
+    }
+
+    // 6. Bloco de Assinatura do Inspetor Responsável
+    if (currentY > 240) {
+      doc.addPage();
+      currentY = 18;
+    }
+
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.25);
+    doc.line(14, currentY, 196, currentY);
+    currentY += 3;
+
+    // Lado Esquerdo: Metadados de auditoria
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text('Relatório emitido via Sistema Checklist 3D Ar Condicionado', 14, currentY + 4);
+    doc.text(`ID de Autenticação: ${report.id}`, 14, currentY + 8);
+    doc.text(`Data de Conclusão Técnica: ${report.dataHoraFormatada}`, 14, currentY + 12);
+
+    // Lado Direito: Assinatura Digital e Nome
+    if (report.assinatura) {
+      try {
+        doc.addImage(report.assinatura, 'PNG', 136, currentY - 2, 50, 15);
+      } catch (e) {
+        console.warn("Aviso ao desenhar assinatura no PDF:", e);
+      }
+    }
+    doc.setDrawColor(15, 23, 42);
+    doc.setLineWidth(0.35);
+    doc.line(130, currentY + 14.5, 192, currentY + 14.5);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(report.inspetor, 161, currentY + 18.5, { align: 'center' });
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text('Responsável Técnico / Conferente', 161, currentY + 22, { align: 'center' });
+
+    // 7. Anexo Fotográfico de Evidências Técnicas (Galeria Otimizada)
+    const fotosPdf = [];
+    if (report.items) {
+      Object.keys(report.items).forEach(k => {
+        const it = report.items[k];
+        if (it.fotos && it.fotos.length > 0) {
+          it.fotos.forEach(foto => {
+            fotosPdf.push({
+              src: foto,
+              item: it.item,
+              secao: it.secao,
+              conforme: it.conforme,
+              motivo: it.motivo || ''
+            });
+          });
+        }
+      });
+    }
+    if (report.fotosObservacoes && report.fotosObservacoes.length > 0) {
+      report.fotosObservacoes.forEach(foto => {
+        fotosPdf.push({
+          src: foto,
+          item: 'Observações Gerais',
+          secao: 'Observações',
+          conforme: null,
+          motivo: report.observacoes || 'Registro complementar'
+        });
+      });
+    }
+
+    if (fotosPdf.length > 0) {
+      // Inicia anexo fotográfico em nova página dedicada
+      doc.addPage();
+      let photoY = 18;
+
+      // Faixa título do anexo
+      doc.setFillColor(241, 245, 249);
+      doc.setDrawColor(0, 125, 197);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(14, photoY, 182, 7.5, 1.2, 1.2, 'FD');
+      doc.setFillColor(0, 125, 197);
+      doc.rect(14, photoY, 3.5, 7.5, 'F');
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`ANEXO FOTOGRÁFICO DE EVIDÊNCIAS TÉCNICAS (${fotosPdf.length} FOTO(S))`, 21, photoY + 5.2);
+      photoY += 11;
+
+      // Grade de 2 colunas com 3 linhas por folha (6 fotos por página)
+      for (let i = 0; i < fotosPdf.length; i++) {
+        const f = fotosPdf[i];
+        const col = i % 2;
+        const cardX = col === 0 ? 14 : 108;
+
+        // Se estiver iniciando uma nova linha e exceder o limite da página, adiciona nova folha
+        if (col === 0 && photoY + 76 > 280) {
+          doc.addPage();
+          photoY = 18;
+        }
+
+        // Borda e card do registro fotográfico
+        doc.setFillColor(255, 255, 255);
+        doc.setDrawColor(203, 213, 225);
+        doc.setLineWidth(0.25);
+        doc.roundedRect(cardX, photoY, 88, 74, 1.8, 1.8, 'FD');
+
+        // Moldura interna de fundo da foto
+        doc.setFillColor(248, 250, 252);
+        doc.roundedRect(cardX + 2, photoY + 2, 84, 46, 1.2, 1.2, 'F');
+
+        // Desenha a imagem
+        try {
+          doc.addImage(f.src, 'JPEG', cardX + 3, photoY + 3, 82, 44);
+        } catch (e) {
+          try {
+            doc.addImage(f.src, 'PNG', cardX + 3, photoY + 3, 82, 44);
+          } catch (err) {}
+        }
+
+        // Rodapé do card: Seção e Badge
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.8);
+        doc.setTextColor(0, 125, 197);
+        doc.text(f.secao.toUpperCase(), cardX + 3.5, photoY + 52);
+
+        let badgeLabel = 'OBSERVAÇÃO';
+        let badgeTextColor = [3, 105, 161];
+        let badgeBgColor = [224, 242, 254];
+        if (f.conforme === false) {
+          badgeLabel = 'NÃO CONFORME';
+          badgeTextColor = [153, 27, 27];
+          badgeBgColor = [254, 242, 242];
+        } else if (f.conforme === true) {
+          badgeLabel = 'CONFORME';
+          badgeTextColor = [22, 101, 52];
+          badgeBgColor = [220, 252, 231];
+        }
+
+        doc.setFillColor(...badgeBgColor);
+        doc.roundedRect(cardX + 54, photoY + 48.5, 30.5, 4.5, 1, 1, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(6.2);
+        doc.setTextColor(...badgeTextColor);
+        doc.text(badgeLabel, cardX + 69.2, photoY + 51.8, { align: 'center' });
+
+        // Nome do item verificado
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(15, 23, 42);
+        const itemLines = doc.splitTextToSize(f.item, 82);
+        doc.text(itemLines.slice(0, 2), cardX + 3.5, photoY + 57.5);
+
+        // Motivo / Apontamento
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.8);
+        doc.setTextColor(71, 85, 105);
+        const descText = f.motivo || 'Registro fotográfico técnico';
+        const descLines = doc.splitTextToSize(descText, 82);
+        doc.text(descLines.slice(0, 2), cardX + 3.5, photoY + 65);
+
+        // Ao completar o segundo item da linha, avança para a próxima linha
+        if (col === 1 || i === fotosPdf.length - 1) {
+          photoY += 78;
+        }
+      }
+    }
+
+    // 8. Cabeçalho e Rodapé Vetoriais em Todas as Páginas
+    const totalPages = doc.getNumberOfPages();
+    for (let p = 1; p <= totalPages; p++) {
+      doc.setPage(p);
+
+      // Cabeçalho corrido superior (páginas 2 em diante)
+      if (p > 1) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(100, 116, 139);
+        doc.text('3D Ar Condicionado • Laudo Técnico de Conferência de Quadros Elétricos', 14, 9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(report.codigoRelatorio, 196, 9, { align: 'right' });
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.2);
+        doc.line(14, 11, 196, 11);
+      }
+
+      // Rodapé corrido em todas as páginas
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.2);
+      doc.line(14, 287, 196, 287);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text('Sistema 3D Ar Condicionado • Documento Técnico de Vistoria e Qualidade', 14, 291);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Página ${p} de ${totalPages}`, 196, 291, { align: 'right' });
+    }
+
+    // 9. Download Direto do PDF Vetorial
+    const cleanObra = (report.obra || 'Geral').replace(/[^a-zA-Z0-9]/g, '_');
+    doc.save(`Relatorio_N_${report.numero}_${cleanObra}_3DAr.pdf`);
+    showToast("Laudo técnico vetorial em PDF baixado com sucesso!", "success");
+
   } catch (err) {
-    console.error("Falha ao gerar PDF via html2pdf:", err);
-    showToast("Gerando PDF via impressão do navegador...", "info");
+    console.error("Erro na geração do PDF via jsPDF:", err);
+    showToast("Abrindo prévia de impressão nativa...", "info");
     window.print();
-  } finally {
-    if (document.body.contains(renderWrapper)) {
-      document.body.removeChild(renderWrapper);
-    }
   }
 };
 
