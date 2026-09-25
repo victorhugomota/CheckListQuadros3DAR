@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Ar Condicionado - Checklist de Quadros Elétricos</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="logo 3d.svg">
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Tailwind CSS CDN com custom theme -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#00adef',
+              600: '#007dc5',
+              700: '#005a8e',
+              800: '#075985',
+              900: '#0c4a6e',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Estilos customizados da aplicação -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Firebase SDKs (Compat para facilidade de uso em CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics-compat.js"></script>
+
+  <!-- Bibliotecas de Exportação e Assinatura Digital -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+</head>
+<body class="bg-[#f6f8fa] text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- ======================================================== -->
+  <!-- NAVBAR SUPERIOR ESTILO ASANA -->
+  <!-- ======================================================== -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Lado Esquerdo: Logo e Nome do Sistema -->
+      <div class="flex items-center space-x-4 cursor-pointer" onclick="switchView('dashboard')">
+        <div class="flex items-center justify-center p-1 bg-white rounded-lg">
+          <img src="logo 3d.svg" alt="3D Ar Condicionado" class="h-9 w-auto">
+        </div>
+        <div class="border-l border-slate-200 pl-4 hidden sm:block">
+          <h1 class="text-sm font-bold text-slate-900 leading-tight">3D Ar Condicionado</h1>
+          <p class="text-[11px] text-slate-500 font-medium">Checklist de Conferência de Quadros Elétricos</p>
+        </div>
+      </div>
+
+      <!-- Barra de Busca Central -->
+      <div class="flex-1 max-w-md mx-4 hidden md:block">
+        <div class="relative">
+          <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <i class="fas fa-search text-xs"></i>
+          </span>
+          <input type="text" id="global-search-input" placeholder="Buscar por obra, quadro, número ou inspetor..." 
+            class="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-100 hover:bg-slate-50 focus:bg-white border border-transparent focus:border-[#007dc5] rounded-lg transition-all outline-none">
+        </div>
+      </div>
+
+      <!-- Lado Direito: Ações e Status -->
+      <div class="flex items-center space-x-3">
+        <!-- Status da Sincronização Firebase / Local -->
+        <div id="sync-status-badge" class="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+          <span class="w-2 h-2 mr-1.5 rounded-full bg-slate-400"></span> Conectando...
+        </div>
+
+        <!-- Botão Novo Relatório (Estilo Asana Primary) -->
+        <button onclick="novoRelatorio()" class="inline-flex items-center px-3.5 py-2 text-xs font-semibold text-white bg-[#007dc5] hover:bg-[#005a8e] active:scale-95 rounded-lg shadow-sm transition-all">
+          <i class="fas fa-plus mr-1.5"></i> Novo Relatório
+        </button>
+
+        <!-- Botão Toggle Menu Lateral (Mobile e Desktop) -->
+        <button onclick="toggleSidebar()" class="lg:hidden p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg" title="Histórico Lateral">
+          <i class="fas fa-bars"></i>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ======================================================== -->
+  <!-- CONTAINER PRINCIPAL COM MENU LATERAL DIREITO -->
+  <!-- ======================================================== -->
+  <div class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex gap-6">
+
+    <!-- ÁREA PRINCIPAL DE CONTEÚDO (ESQUERDA / CENTRO) -->
+    <main class="flex-1 min-w-0">
+
+      <!-- ==================================================== -->
+      <!-- VIEW 1: DASHBOARD / HISTÓRICO DE RELATÓRIOS (ABA INICIAL) -->
+      <!-- ==================================================== -->
+      <div id="view-dashboard" class="space-y-6">
+        
+        <!-- Boas-vindas e Métricas Rápidas -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">Histórico de Relatórios de Quadros</h2>
+            <p class="text-xs text-slate-500 mt-0.5">Acompanhamento e emissão de laudos de conferência técnica</p>
+          </div>
+          <button onclick="novoRelatorio()" class="sm:hidden w-full inline-flex justify-center items-center px-4 py-2.5 text-xs font-semibold text-white bg-[#007dc5] rounded-lg shadow-sm">
+            <i class="fas fa-plus mr-1.5"></i> Iniciar Novo Checklist
+          </button>
+        </div>
+
+        <!-- Cartões de Métricas no Estilo Asana -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-sky-50 text-[#007dc5] flex items-center justify-center text-xl font-bold">
+              <i class="fas fa-clipboard-check"></i>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-slate-500">Total de Relatórios</p>
+              <h3 id="metric-total-relatorios" class="text-2xl font-bold text-slate-900">0</h3>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-xl font-bold">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-slate-500">Não Conformidades</p>
+              <h3 id="metric-total-nao" class="text-2xl font-bold text-slate-900">0</h3>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl font-bold">
+              <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="truncate">
+              <p class="text-xs font-medium text-slate-500">Última Conferência</p>
+              <h3 id="metric-ultima-data" class="text-sm font-bold text-slate-800 truncate">-</h3>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cabeçalho da Lista de Relatórios -->
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div class="flex items-center space-x-2">
+            <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Relatórios Registrados</span>
+            <span id="dashboard-total-count" class="px-2 py-0.5 text-[11px] font-semibold bg-slate-100 text-slate-600 rounded-full">0 relatórios</span>
+          </div>
+
+          <!-- Filtro rápido no mobile -->
+          <div class="w-full sm:w-auto md:hidden">
+            <input type="text" oninput="handleSearch(this.value)" placeholder="Filtrar relatórios..." class="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg">
+          </div>
+        </div>
+
+        <!-- Grid de Relatórios Gerados -->
+        <div id="dashboard-reports-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <!-- Relatórios renderizados dinamicamente via app.js -->
+        </div>
+
+        <!-- Estado Vazio (Quando ainda não há relatórios) -->
+        <div id="dashboard-empty-state" class="hidden bg-white rounded-2xl border-2 border-dashed border-slate-200 p-12 text-center">
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-sky-50 text-[#007dc5] flex items-center justify-center text-2xl">
+            <i class="fas fa-clipboard-list"></i>
+          </div>
+          <h3 class="text-base font-bold text-slate-800 mb-1">Nenhum relatório encontrado</h3>
+          <p class="text-xs text-slate-500 max-w-sm mx-auto mb-6">
+            Inicie a primeira conferência de quadros elétricos clicando no botão abaixo.
+          </p>
+          <button onclick="novoRelatorio()" class="inline-flex items-center px-4 py-2.5 text-xs font-semibold text-white bg-[#007dc5] hover:bg-[#005a8e] rounded-lg shadow-sm">
+            <i class="fas fa-plus mr-1.5"></i> Criar Relatório Nº 1
+          </button>
+        </div>
+
+      </div>
+
+      <!-- ==================================================== -->
+      <!-- VIEW 2: FORMULÁRIO DE PREENCHIMENTO DO CHECKLIST -->
+      <!-- ==================================================== -->
+      <div id="view-form" class="hidden space-y-6">
+
+        <!-- Topo do Formulário com Breadcrumb e Progresso -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
+            <div class="flex items-center space-x-3">
+              <button onclick="switchView('dashboard')" class="text-slate-400 hover:text-slate-700 text-sm p-1 rounded hover:bg-slate-100" title="Voltar ao Painel">
+                <i class="fas fa-arrow-left"></i>
+              </button>
+              <div>
+                <h2 id="report-title-display" class="text-xl font-bold text-slate-900">Novo Relatório Nº 1</h2>
+                <p class="text-xs text-slate-500">Preencha cada conferência. Ao marcar 'NÃO', justifique o motivo.</p>
+              </div>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+              <button type="button" onclick="switchView('dashboard')" class="px-3 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+                Cancelar
+              </button>
+              <button type="button" onclick="salvarRelatorio(false)" class="px-4 py-2 text-xs font-semibold text-white bg-[#007dc5] hover:bg-[#005a8e] rounded-lg shadow-sm transition-all flex items-center">
+                <i class="fas fa-save mr-1.5"></i> Salvar Relatório
+              </button>
+            </div>
+          </div>
+
+          <!-- Barra de Progresso do Checklist -->
+          <div>
+            <div class="flex items-center justify-between text-xs text-slate-500 mb-1.5 font-medium">
+              <span>Progresso da Conferência</span>
+              <span id="form-progress-text">0 de 37 itens verificados (0%)</span>
+            </div>
+            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+              <div id="form-progress-bar" class="bg-[#007dc5] h-2 rounded-full transition-all duration-300" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card de Informações Gerais do Relatório -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <h3 class="text-sm font-bold text-slate-900 mb-4 flex items-center">
+            <i class="fas fa-info-circle text-[#007dc5] mr-2"></i> Informações Gerais da Vistoria
+          </h3>
+          
+          <input type="hidden" id="form-report-id">
+          <input type="hidden" id="form-report-number">
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Campo Obra -->
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-semibold text-slate-700 mb-1" for="form-report-obra">
+                Identificação da Obra / Local <span class="text-rose-500">*</span>
+              </label>
+              <input type="text" id="form-report-obra" placeholder="Ex: Hospital Municipal, Shopping Plaza, Fábrica X..." 
+                class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#007dc5] focus:border-[#007dc5] outline-none">
+            </div>
+
+            <!-- Campo Quadro Elétrico / Tag -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1" for="form-report-quadro">
+                Identificação / Tag do Quadro
+              </label>
+              <input type="text" id="form-report-quadro" placeholder="Ex: QGBT-01, QC-CHILLER..." 
+                class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#007dc5] focus:border-[#007dc5] outline-none">
+            </div>
+
+            <!-- Campo Data e Hora -->
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1" for="form-report-date">
+                Data e Horário <span class="text-rose-500">*</span>
+              </label>
+              <input type="datetime-local" id="form-report-date" 
+                class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#007dc5] focus:border-[#007dc5] outline-none">
+            </div>
+
+            <!-- Campo Inspetor / Responsável -->
+            <div class="sm:col-span-2">
+              <label class="block text-xs font-semibold text-slate-700 mb-1" for="form-report-inspector">
+                Identificação do Inspetor / Responsável <span class="text-rose-500">*</span>
+              </label>
+              <select id="form-report-inspector" class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#007dc5] focus:border-[#007dc5] outline-none">
+                <option value="">Selecione o profissional...</option>
+                <!-- Preenchido via app.js com a lista da equipe -->
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Container das Sessões de Checklist (Tampa, Interna, Cabeamento) -->
+        <div id="checklist-sections-container">
+          <!-- Renderizado dinamicamente via app.js -->
+        </div>
+
+        <!-- Seção de Observações Gerais -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <div class="flex items-center space-x-3 mb-3">
+            <div class="w-8 h-8 rounded-lg bg-sky-100 text-[#007dc5] flex items-center justify-center font-bold">
+              <i class="fas fa-comment-alt"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-semibold text-slate-800">Observações Gerais</h3>
+              <p class="text-xs text-slate-500">Campo opcional para escrever alguma observação que não esteja no checklist</p>
+            </div>
+          </div>
+          <textarea id="form-report-observacoes" rows="3" placeholder="Digite aqui quaisquer detalhes técnicos, observações de segurança ou recomendações..." 
+            class="w-full text-xs text-slate-800 bg-slate-50/50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-[#007dc5] focus:border-[#007dc5] outline-none transition-all"></textarea>
+        </div>
+
+        <!-- Seção de Assinatura Digital do Inspetor -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center space-x-3">
+              <div class="w-8 h-8 rounded-lg bg-sky-100 text-[#007dc5] flex items-center justify-center font-bold">
+                <i class="fas fa-signature"></i>
+              </div>
+              <div>
+                <h3 class="text-base font-semibold text-slate-800">Assinatura do Inspetor</h3>
+                <p class="text-xs text-slate-500">Assine com o mouse ou toque na tela para validar a conferência</p>
+              </div>
+            </div>
+            <button type="button" id="btn-clear-signature" class="text-xs text-slate-500 hover:text-rose-600 font-medium px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 transition-colors">
+              <i class="fas fa-eraser mr-1"></i> Limpar Assinatura
+            </button>
+          </div>
+
+          <div class="signature-wrapper w-full h-36">
+            <canvas id="signature-pad" class="w-full h-full rounded-lg"></canvas>
+          </div>
+          <span class="block text-[11px] text-slate-400 mt-2 italic text-center">Desenhe sua assinatura no quadro acima</span>
+        </div>
+
+        <!-- Rodapé de Ações Finais do Formulário -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-wrap items-center justify-end gap-3 sticky bottom-4 z-20">
+          <button type="button" onclick="switchView('dashboard')" class="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+            Cancelar
+          </button>
+          <button type="button" onclick="salvarRelatorio(false)" class="px-5 py-2 text-xs font-semibold text-white bg-[#007dc5] hover:bg-[#005a8e] rounded-lg shadow-sm transition-all flex items-center">
+            <i class="fas fa-save mr-1.5"></i> Salvar Relatório
+          </button>
+          <button type="button" onclick="salvarRelatorio(true)" class="px-5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-all flex items-center">
+            <i class="fas fa-file-pdf mr-1.5"></i> Salvar e Baixar PDF
+          </button>
+        </div>
+
+      </div>
+
+      <!-- ==================================================== -->
+      <!-- VIEW 3: VISUALIZAÇÃO DETALHADA DO RELATÓRIO -->
+      <!-- ==================================================== -->
+      <div id="view-detail" class="hidden space-y-6">
+        
+        <!-- Botão de Voltar ao Painel -->
+        <div class="flex items-center justify-between">
+          <button onclick="switchView('dashboard')" class="inline-flex items-center text-xs font-semibold text-slate-600 hover:text-[#007dc5] bg-white border border-slate-200 px-3 py-2 rounded-lg shadow-sm hover:bg-slate-50 transition-colors">
+            <i class="fas fa-arrow-left mr-2"></i> Voltar ao Painel
+          </button>
+        </div>
+
+        <!-- Conteúdo do Relatório Formatado -->
+        <div id="report-detail-content">
+          <!-- Renderizado dinamicamente via renderReportDetail em app.js -->
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- Backdrop para o Drawer Mobile -->
+    <div id="sidebar-backdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden lg:hidden"></div>
+
+    <!-- ======================================================== -->
+    <!-- MENU LATERAL DIREITO ESTILO ASANA COM RELATÓRIOS JÁ CRIADOS -->
+    <!-- ======================================================== -->
+    <aside id="right-sidebar" class="w-80 shrink-0 hidden lg:block">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm sticky top-24 overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
+        
+        <!-- Header da Sidebar -->
+        <div class="p-4 border-b border-slate-200 bg-slate-50/70">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center">
+              <i class="fas fa-history mr-2 text-[#007dc5]"></i> Relatórios Recentes
+            </h3>
+            <div class="flex items-center space-x-2">
+              <span id="sidebar-count-badge" class="px-2 py-0.5 text-[11px] font-bold bg-sky-100 text-[#007dc5] rounded-full">
+                0
+              </span>
+              <button onclick="toggleSidebar()" class="lg:hidden text-slate-400 hover:text-slate-600 p-1" title="Fechar">
+                <i class="fas fa-times text-xs"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Busca na Sidebar -->
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400">
+              <i class="fas fa-search text-[10px]"></i>
+            </span>
+            <input type="text" id="sidebar-search-input" placeholder="Filtrar por obra ou nº..." 
+              class="w-full pl-7 pr-3 py-1 text-xs bg-white border border-slate-200 rounded-md focus:border-[#007dc5] outline-none">
+          </div>
+        </div>
+
+        <!-- Lista Rolável de Relatórios -->
+        <div id="sidebar-reports-list" class="flex-1 overflow-y-auto p-3 divide-y divide-slate-100">
+          <!-- Preenchido via app.js -->
+        </div>
+
+        <!-- Footer da Sidebar -->
+        <div class="p-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-[11px] text-slate-500">
+          <span>Sistema 3D Ar Condicionado</span>
+          <button onclick="novoRelatorio()" class="text-[#007dc5] font-semibold hover:underline flex items-center">
+            <i class="fas fa-plus mr-1"></i> Novo
+          </button>
+        </div>
+
+      </div>
+    </aside>
+
+
+  </div>
+
+  <!-- Template Oculto para Geração de PDF de Alta Qualidade -->
+  <div id="pdf-template-wrapper" class="hidden"></div>
+
+  <!-- Container de Toasts de Notificação -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- Script Principal da Aplicação -->
+  <script src="app.js"></script>
+</body>
+</html>

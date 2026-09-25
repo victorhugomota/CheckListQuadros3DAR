@@ -1,0 +1,134 @@
+/* Estilos customizados - 3D Ar Condicionado Checklist */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --primary-3d: #007dc5;
+  --primary-dark: #005a8e;
+  --secondary-3d: #00bcf2;
+  --accent-3d: #00adef;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f6f8fa;
+  color: #1e293b;
+}
+
+/* Custom Scrollbar estilo Asana */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Transições suaves */
+.transition-card {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.transition-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+}
+
+/* Efeito do item do checklist quando 'Não' é marcado */
+.item-nao-ativo {
+  border-color: #fca5a5 !important;
+  background-color: #fef2f2 !important;
+}
+
+.item-sim-ativo {
+  border-color: #86efac !important;
+  background-color: #f0fdf4 !important;
+}
+
+/* Canvas da assinatura */
+.signature-wrapper {
+  position: relative;
+  background: #ffffff;
+  border: 2px dashed #cbd5e1;
+  border-radius: 0.5rem;
+  touch-action: none;
+}
+.signature-wrapper:hover {
+  border-color: #007dc5;
+}
+
+/* Animação para abertura do campo de justificativa */
+.expand-nao-field {
+  animation: slideDown 0.25s ease-out forwards;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Estilos de Impressão / PDF */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .print-page-break {
+    page-break-before: always;
+  }
+}
+
+/* Área de impressão para PDF */
+#pdf-template {
+  background: white;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Sidebar Drawer em dispositivos móveis */
+@media (max-width: 1023px) {
+  #right-sidebar.mobile-open {
+    display: block !important;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 320px;
+    z-index: 50;
+    background: white;
+    box-shadow: -10px 0 25px -5px rgba(0, 0, 0, 0.15);
+    animation: slideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  #sidebar-backdrop.mobile-open {
+    display: block !important;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
