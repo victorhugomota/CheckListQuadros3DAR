@@ -364,11 +364,12 @@
       <div id="view-detail" class="hidden space-y-6">
         
         <!-- Botão de Voltar ao Painel -->
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between no-print">
           <button onclick="switchView('dashboard')" class="inline-flex items-center text-xs font-semibold text-slate-600 hover:text-[#007dc5] bg-white border border-slate-200 px-3 py-2 rounded-lg shadow-sm hover:bg-slate-50 transition-colors">
             <i class="fas fa-arrow-left mr-2"></i> Voltar ao Painel
           </button>
         </div>
+
 
         <!-- Conteúdo do Relatório Formatado -->
         <div id="report-detail-content">
@@ -433,8 +434,6 @@
 
   </div>
 
-  <!-- Template Oculto para Geração de PDF de Alta Qualidade -->
-  <div id="pdf-template-wrapper" class="hidden"></div>
 
   <!-- Container de Toasts de Notificação -->
   <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>

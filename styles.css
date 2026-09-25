@@ -78,30 +78,60 @@ body {
   }
 }
 
-/* Estilos de Impressão / PDF */
+/* Estilos de Impressão e Geração de PDF */
 @media print {
-  body {
-    background: #ffffff !important;
-    color: #000000 !important;
-  }
-  .no-print {
+  header,
+  aside,
+  #sidebar-backdrop,
+  #toast-container,
+  .no-print,
+  #view-dashboard,
+  #view-form {
     display: none !important;
   }
-  .print-only {
-    display: block !important;
+
+  body, html, main {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
   }
-  .print-page-break {
-    page-break-before: always;
+
+  #view-detail {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  tr, .rounded-xl, table {
+    page-break-inside: avoid !important;
   }
 }
 
 /* Área de impressão para PDF */
-#pdf-template {
-  background: white;
-  width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
+#pdf-render-box {
+  width: 794px;
+  background: #ffffff;
+  color: #1e293b;
+  font-family: 'Inter', sans-serif;
+  box-sizing: border-box;
 }
+
+#pdf-render-box table {
+  page-break-inside: auto;
+}
+
+#pdf-render-box tr {
+  page-break-inside: avoid;
+}
+
 
 /* Sidebar Drawer em dispositivos móveis */
 @media (max-width: 1023px) {

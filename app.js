@@ -955,7 +955,7 @@ function renderReportDetail(report) {
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2 self-stretch md:self-auto justify-end">
+        <div class="flex flex-wrap items-center gap-2 self-stretch md:self-auto justify-end no-print">
           <button onclick="editarRelatorio('${report.id}')" class="px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm flex items-center">
             <i class="fas fa-edit mr-1.5 text-blue-600"></i> Editar
           </button>
@@ -963,7 +963,10 @@ function renderReportDetail(report) {
             <i class="fas fa-file-excel mr-1.5 text-emerald-600"></i> Exportar Excel
           </button>
           <button onclick="exportarPDF()" class="px-4 py-2 text-xs font-semibold text-white bg-[#007dc5] hover:bg-[#005a8e] rounded-lg transition-colors shadow-sm flex items-center">
-            <i class="fas fa-file-pdf mr-1.5"></i> Exportar PDF
+            <i class="fas fa-file-pdf mr-1.5"></i> Baixar PDF
+          </button>
+          <button onclick="imprimirRelatorio()" class="px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm flex items-center" title="Imprimir direto ou salvar como PDF no navegador">
+            <i class="fas fa-print mr-1.5 text-slate-600"></i> Imprimir / PDF
           </button>
           <button onclick="excluirRelatorio('${report.id}')" class="px-3 py-2 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors shadow-sm flex items-center" title="Excluir Relatório">
             <i class="fas fa-trash"></i>
@@ -1045,35 +1048,74 @@ function renderReportDetail(report) {
 // ==========================================
 // 12. EXPORTAÇÃO PDF E EXCEL
 // ==========================================
-window.exportarPDF = function() {
-  const report = AppState.currentReport;
-  if (!report) return;
+let cachedLogoSvgDataUrl = '';
 
-  const pdfContainer = document.getElementById('pdf-template-wrapper');
-  if (!pdfContainer) return;
+function preloadLogo() {
+  fetch('logo 3d.svg')
+    .then(r => r.text())
+    .then(svgText => {
+      cachedLogoSvgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+    })
+    .catch(err => {
+      console.warn("Logo fallback dataurl:", err);
+    });
+}
+
+window.imprimirRelatorio = function() {
+  window.print();
+};
+
+window.exportarPDF = async function() {
+  const report = AppState.currentReport;
+  if (!report) {
+    showToast("Nenhum relatório selecionado para exportar.", "error");
+    return;
+  }
+
+  showToast("Gerando PDF, aguarde alguns instantes...", "info");
+
+  // Criar tela de carregamento visual
+  const overlay = document.createElement('div');
+  overlay.id = 'pdf-loading-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:99998;display:flex;align-items:center;justify-content:center;color:#fff;';
+  overlay.innerHTML = `
+    <div style="background:#fff;color:#1e293b;padding:24px 32px;border-radius:12px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);text-align:center;max-width:360px;">
+      <i class="fas fa-circle-notch fa-spin text-3xl text-[#007dc5]" style="margin-bottom:12px;"></i>
+      <h4 style="font-weight:700;font-size:15px;margin:0 0 4px 0;">Gerando Relatório em PDF</h4>
+      <p style="font-size:12px;color:#64748b;margin:0;">Renderizando tabelas e assinaturas técnicas...</p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Criar container DOM com layout A4 (794px = 210mm a 96dpi)
+  const renderBox = document.createElement('div');
+  renderBox.id = 'pdf-render-box';
+  renderBox.style.cssText = 'position:absolute;top:0;left:0;width:794px;background:#ffffff;color:#1e293b;z-index:99999;padding:24px;box-sizing:border-box;font-family:\'Inter\',sans-serif;';
 
   const totalNaoConformes = report.estatisticas.totalNaoConformes !== undefined ? 
     report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
 
-  pdfContainer.innerHTML = `
-    <div style="font-family: 'Inter', sans-serif; color: #1e293b; padding: 24px; background: #ffffff;">
+  const logoSrc = cachedLogoSvgDataUrl || 'logo 3d.svg';
+
+  renderBox.innerHTML = `
+    <div style="font-family:'Inter',sans-serif;color:#1e293b;background:#ffffff;">
       <!-- Header do Relatório -->
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #007dc5; padding-bottom: 12px; margin-bottom: 16px;">
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <img src="logo 3d.svg" style="height: 48px; width: auto;" alt="3D Ar">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #007dc5;padding-bottom:12px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <img src="${logoSrc}" style="height:48px;width:auto;max-width:180px;object-fit:contain;" alt="3D Ar">
           <div>
-            <h1 style="font-size: 16px; font-weight: 800; color: #007dc5; margin: 0; text-transform: uppercase;">3D Ar Condicionado</h1>
-            <p style="font-size: 11px; color: #64748b; margin: 2px 0 0 0;">Checklist de Conferência de Quadros Elétricos</p>
+            <h1 style="font-size:16px;font-weight:800;color:#007dc5;margin:0;text-transform:uppercase;">3D Ar Condicionado</h1>
+            <p style="font-size:11px;color:#64748b;margin:2px 0 0 0;">Checklist de Conferência de Quadros Elétricos</p>
           </div>
         </div>
-        <div style="text-align: right;">
-          <div style="font-size: 16px; font-weight: 800; color: #0f172a;">${report.codigoRelatorio}</div>
-          <div style="font-size: 11px; color: #64748b;">${report.dataHoraFormatada}</div>
+        <div style="text-align:right;">
+          <div style="font-size:16px;font-weight:800;color:#0f172a;">${report.codigoRelatorio}</div>
+          <div style="font-size:11px;color:#64748b;">${report.dataHoraFormatada}</div>
         </div>
       </div>
 
       <!-- Metadados -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-bottom: 16px; font-size: 11px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;margin-bottom:16px;font-size:11px;">
         <div><strong>Obra:</strong> ${escapeHtml(report.obra)}</div>
         <div><strong>Identificação / Tag:</strong> ${escapeHtml(report.quadro || 'Geral')}</div>
         <div><strong>Inspetor Responsável:</strong> ${escapeHtml(report.inspetor)}</div>
@@ -1082,16 +1124,16 @@ window.exportarPDF = function() {
 
       <!-- Tabelas do Checklist -->
       ${CHECKLIST_SECTIONS.map(sec => `
-        <div style="margin-bottom: 14px;">
-          <div style="background: #f1f5f9; padding: 6px 10px; font-size: 12px; font-weight: 700; color: #0f172a; border-left: 4px solid #007dc5;">
+        <div style="margin-bottom:14px;page-break-inside:avoid;">
+          <div style="background:#f1f5f9;padding:6px 10px;font-size:12px;font-weight:700;color:#0f172a;border-left:4px solid #007dc5;">
             ${sec.title}
           </div>
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 4px;">
+          <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;">
             <thead>
-              <tr style="background: #f8fafc; border-bottom: 1px solid #cbd5e1; text-align: left;">
-                <th style="padding: 5px; width: 45%;">Item de Conferência</th>
-                <th style="padding: 5px; width: 15%; text-align: center;">Status</th>
-                <th style="padding: 5px; width: 40%;">Apontamento / O que foi danificado</th>
+              <tr style="background:#f8fafc;border-bottom:1px solid #cbd5e1;text-align:left;">
+                <th style="padding:5px;width:45%;">Item de Conferência</th>
+                <th style="padding:5px;width:18%;text-align:center;">Status</th>
+                <th style="padding:5px;width:37%;">Apontamento / O que foi danificado</th>
               </tr>
             </thead>
             <tbody>
@@ -1117,14 +1159,14 @@ window.exportarPDF = function() {
                 }
 
                 return `
-                  <tr style="border-bottom: 1px solid #e2e8f0; background: ${conforme === false ? '#fef2f2' : 'transparent'};">
-                    <td style="padding: 4px 5px; font-weight: ${conforme === false ? '600' : 'normal'}; color: ${conforme === false ? '#991b1b' : '#334155'};">
+                  <tr style="border-bottom:1px solid #e2e8f0;background:${conforme === false ? '#fef2f2' : 'transparent'};page-break-inside:avoid;">
+                    <td style="padding:4px 5px;font-weight:${conforme === false ? '600' : 'normal'};color:${conforme === false ? '#991b1b' : '#334155'};">
                       ${itemText}
                     </td>
-                    <td style="padding: 4px 5px; text-align: center; font-weight: bold; color: ${statusColor};">
+                    <td style="padding:4px 5px;text-align:center;font-weight:bold;color:${statusColor};">
                       ${statusLabel}
                     </td>
-                    <td style="padding: 4px 5px; color: ${conforme === false ? '#991b1b' : '#64748b'};">
+                    <td style="padding:4px 5px;color:${conforme === false ? '#991b1b' : '#64748b'};">
                       ${motivo ? escapeHtml(motivo) : (conforme === true ? 'Conforme' : '-')}
                     </td>
                   </tr>
@@ -1136,40 +1178,84 @@ window.exportarPDF = function() {
       `).join('')}
 
       <!-- Observações Gerais -->
-      <div style="margin-top: 12px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px;">
-        <strong style="color: #0f172a; display: block; margin-bottom: 4px;">Observações Complementares:</strong>
-        <p style="margin: 0; color: #475569; white-space: pre-line;">${escapeHtml(report.observacoes || 'Sem observações adicionais.')}</p>
+      <div style="margin-top:12px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;page-break-inside:avoid;">
+        <strong style="color:#0f172a;display:block;margin-bottom:4px;">Observações Complementares:</strong>
+        <p style="margin:0;color:#475569;white-space:pre-line;">${escapeHtml(report.observacoes || 'Sem observações adicionais.')}</p>
       </div>
 
       <!-- Bloco de Assinatura -->
-      <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: flex-end; padding-top: 10px; border-top: 1px solid #cbd5e1;">
+      <div style="margin-top:20px;display:flex;justify-content:space-between;align-items:flex-end;padding-top:10px;border-top:1px solid #cbd5e1;page-break-inside:avoid;">
         <div>
-          <p style="font-size: 9px; color: #94a3b8; margin: 0;">Relatório gerado via Sistema Checklist 3D Ar Condicionado</p>
-          <p style="font-size: 9px; color: #94a3b8; margin: 0;">ID Autenticação: ${report.id}</p>
+          <p style="font-size:9px;color:#94a3b8;margin:0;">Relatório gerado via Sistema Checklist 3D Ar Condicionado</p>
+          <p style="font-size:9px;color:#94a3b8;margin:0;">ID Autenticação: ${report.id}</p>
         </div>
-        <div style="text-align: center;">
-          ${report.assinatura ? `<img src="${report.assinatura}" style="height: 44px; max-width: 180px; object-contain: contain; margin-bottom: 2px;">` : `<div style="height: 44px;"></div>`}
-          <div style="border-top: 1px solid #000; width: 200px; margin: 0 auto; padding-top: 2px; font-size: 10px; font-weight: bold;">
+        <div style="text-align:center;">
+          ${report.assinatura ? `<img src="${report.assinatura}" style="height:44px;max-width:180px;object-fit:contain;margin-bottom:2px;">` : `<div style="height:44px;"></div>`}
+          <div style="border-top:1px solid #000;width:200px;margin:0 auto;padding-top:2px;font-size:10px;font-weight:bold;">
             ${escapeHtml(report.inspetor)}
           </div>
-          <span style="font-size: 9px; color: #64748b;">Responsável pela Conferência</span>
+          <span style="font-size:9px;color:#64748b;">Responsável pela Conferência</span>
         </div>
       </div>
     </div>
   `;
 
-  const opt = {
-    margin: [8, 8, 8, 8],
-    filename: `Relatorio_N_${report.numero}_${report.obra.replace(/[^a-zA-Z0-9]/g, '_')}_3DAr.pdf`,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-  };
+  document.body.appendChild(renderBox);
+  window.scrollTo(0, 0);
 
-  html2pdf().set(opt).from(pdfContainer).save().then(() => {
-    showToast("PDF gerado e baixado com sucesso!", "success");
-  });
+  try {
+    // Aguardar fontes e imagens decodificarem
+    if (document.fonts) {
+      await document.fonts.ready;
+    }
+    const imgs = renderBox.querySelectorAll('img');
+    await Promise.all(Array.from(imgs).map(img => {
+      if (img.complete) return Promise.resolve();
+      return new Promise(res => {
+        img.onload = res;
+        img.onerror = res;
+      });
+    }));
+
+    await new Promise(r => setTimeout(r, 350));
+
+    const cleanObra = (report.obra || 'Geral').replace(/[^a-zA-Z0-9]/g, '_');
+    const opt = {
+      margin: [8, 8, 8, 8],
+      filename: `Relatorio_N_${report.numero}_${cleanObra}_3DAr.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        scrollY: 0,
+        scrollX: 0,
+        windowWidth: 794
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    };
+
+    if (typeof html2pdf !== 'undefined') {
+      await html2pdf().set(opt).from(renderBox).save();
+      showToast("PDF gerado e baixado com sucesso!", "success");
+    } else {
+      throw new Error("Biblioteca html2pdf não encontrada");
+    }
+  } catch (err) {
+    console.error("Falha ao gerar PDF via html2pdf:", err);
+    showToast("Abrindo prévia de impressão nativa...", "info");
+    window.print();
+  } finally {
+    if (document.body.contains(renderBox)) {
+      document.body.removeChild(renderBox);
+    }
+    if (document.body.contains(overlay)) {
+      document.body.removeChild(overlay);
+    }
+  }
 };
+
 
 window.exportarExcel = function() {
   const report = AppState.currentReport;
@@ -1515,6 +1601,10 @@ document.addEventListener('DOMContentLoaded', () => {
     sidebarSearchInput.addEventListener('input', (e) => handleSearch(e.target.value));
   }
 
+  // Pré-carregar logo oficial para geração de PDF
+  preloadLogo();
+
   // Iniciar sincronização e interface
   initDataSync();
 });
+
