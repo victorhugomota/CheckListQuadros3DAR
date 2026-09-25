@@ -1,7 +1,9 @@
 /**
  * 3D AR CONDICIONADO - SISTEMA DE CHECKLIST DE QUADROS ELÉTRICOS
  * Aplicação inspirada no design Asana com suporte a Firebase Firestore,
- * histórico sequencial, menu lateral direito, exportação PDF e Excel, e assinatura digital.
+ * histórico sequencial, menu lateral direito, exportação PDF e Excel,
+ * assinatura digital, lista de obras salvas com autocomplete e lógica
+ * invertida inteligente para itens de componentes danificados.
  */
 
 // ==========================================
@@ -27,7 +29,6 @@ try {
       try { firebase.analytics(); } catch (e) { }
     }
     db = firebase.firestore();
-    // Habilitar persistência offline se possível
     db.enablePersistence({ synchronizeTabs: true }).catch(err => {
       console.warn("Firestore offline persistence fallback:", err.code);
     });
@@ -119,10 +120,11 @@ const EQUIPE_RESPONSAVEIS = [
 // ==========================================
 const AppState = {
   reports: [],
+  obras: [],
   currentReport: null,
   isEditing: false,
   signaturePad: null,
-  currentView: 'dashboard', // 'dashboard', 'form', 'detail'
+  currentView: 'dashboard',
   searchQuery: '',
   sidebarOpen: true
 };
@@ -130,11 +132,12 @@ const AppState = {
 // ==========================================
 // 4. STORAGE & SINCRONIZAÇÃO
 // ==========================================
-const LOCAL_STORAGE_KEY = '3dar_quadros_checklist_relatorios';
+const LOCAL_STORAGE_REPORTS_KEY = '3dar_quadros_checklist_relatorios';
+const LOCAL_STORAGE_OBRAS_KEY = '3dar_quadros_obras_salvas';
 
 function loadLocalReports() {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const raw = localStorage.getItem(LOCAL_STORAGE_REPORTS_KEY);
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     console.error("Erro ao carregar dados locais:", e);
@@ -144,19 +147,39 @@ function loadLocalReports() {
 
 function saveLocalReports(reports) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(reports));
+    localStorage.setItem(LOCAL_STORAGE_REPORTS_KEY, JSON.stringify(reports));
   } catch (e) {
-    console.error("Erro ao salvar localmente:", e);
+    console.error("Erro ao salvar relatórios localmente:", e);
+  }
+}
+
+function loadLocalObras() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_OBRAS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveLocalObras(obras) {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_OBRAS_KEY, JSON.stringify(obras));
+  } catch (e) {
+    console.error("Erro ao salvar obras localmente:", e);
   }
 }
 
 async function initDataSync() {
   updateSyncBadge(isFirebaseOnline ? 'connecting' : 'local');
   AppState.reports = loadLocalReports();
+  AppState.obras = loadLocalObras();
+  refreshObrasList();
   renderAllViews();
 
   if (db) {
     try {
+      // Listener em tempo real para os relatórios
       db.collection("relatorios_quadros")
         .orderBy("numero", "desc")
         .onSnapshot((snapshot) => {
@@ -170,17 +193,32 @@ async function initDataSync() {
             AppState.reports = cloudReports;
             saveLocalReports(cloudReports);
           } else if (AppState.reports.length > 0) {
-            // Se cloud estiver vazio e houver local, sincronizar
             AppState.reports.forEach(r => {
               db.collection("relatorios_quadros").doc(r.id).set(r).catch(console.warn);
             });
           }
+          refreshObrasList();
           updateSyncBadge('online');
           renderAllViews();
         }, (err) => {
-          console.warn("Erro no listener Firestore:", err);
+          console.warn("Erro no listener Firestore relatórios:", err);
           updateSyncBadge('local');
         });
+
+      // Listener em tempo real para as obras cadastradas
+      db.collection("obras_cadastradas")
+        .onSnapshot((snapshot) => {
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (data && data.nome && !AppState.obras.includes(data.nome)) {
+              AppState.obras.push(data.nome);
+            }
+          });
+          refreshObrasList();
+        }, (err) => {
+          console.warn("Erro no listener Firestore obras:", err);
+        });
+
     } catch (e) {
       console.warn("Erro ao conectar Firestore:", e);
       updateSyncBadge('local');
@@ -207,7 +245,106 @@ function updateSyncBadge(status) {
 }
 
 // ==========================================
-// 5. CÁLCULO DE NÚMERO SEQUENCIAL
+// 5. GESTÃO DE OBRAS SALVAS (AUTOCOMPLETE & TAGS)
+// ==========================================
+function refreshObrasList() {
+  const set = new Set(AppState.obras);
+  // Coletar obras de todos os relatórios
+  AppState.reports.forEach(r => {
+    if (r.obra && r.obra.trim()) {
+      set.add(r.obra.trim());
+    }
+  });
+
+  AppState.obras = Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  saveLocalObras(AppState.obras);
+  renderObrasDatalist();
+}
+
+function renderObrasDatalist() {
+  const datalist = document.getElementById('lista-obras');
+  const container = document.getElementById('obras-sugestoes-container');
+
+  if (datalist) {
+    datalist.innerHTML = AppState.obras.map(o => `<option value="${escapeHtml(o)}">`).join('');
+  }
+
+  if (container) {
+    if (AppState.obras.length === 0) {
+      container.innerHTML = '<span class="text-[11px] text-slate-400 italic">Nenhuma obra salva ainda. Digite o nome acima para cadastrar.</span>';
+    } else {
+      container.innerHTML = `
+        <span class="text-[10px] text-slate-400 font-semibold uppercase mr-1">Obras Salvas:</span>
+        ${AppState.obras.slice(0, 10).map(o => `
+          <button type="button" onclick="selecionarObra('${escapeHtml(o)}')" 
+            class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 hover:bg-sky-100 text-slate-700 hover:text-[#007dc5] border border-slate-200 hover:border-sky-300 transition-colors shadow-2xs">
+            <i class="fas fa-building text-[9px] mr-1 text-slate-400"></i> ${escapeHtml(o)}
+          </button>
+        `).join('')}
+      `;
+    }
+  }
+}
+
+window.selecionarObra = function(nome) {
+  const input = document.getElementById('form-report-obra');
+  if (input) {
+    input.value = nome;
+    input.focus();
+  }
+};
+
+async function registrarNovaObra(nomeObra) {
+  if (!nomeObra || !nomeObra.trim()) return;
+  const limpo = nomeObra.trim();
+  if (!AppState.obras.includes(limpo)) {
+    AppState.obras.push(limpo);
+    saveLocalObras(AppState.obras);
+    refreshObrasList();
+
+    if (db) {
+      try {
+        const docId = limpo.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        await db.collection("obras_cadastradas").doc(docId).set({
+          nome: limpo,
+          criadoEm: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn("Erro ao salvar obra no Firestore:", e);
+      }
+    }
+  }
+}
+
+// ==========================================
+// 6. LÓGICA DE ITENS "DANIFICADOS" (INVERTIDA)
+// ==========================================
+/**
+ * Detecta se a pergunta é sobre componente danificado ou defeito.
+ * Para estes itens:
+ *   - SIM = "Sim, está danificado" -> NÃO CONFORME (abre campo para detalhar o dano)
+ *   - NÃO = "Não está danificado" -> CONFORME (sem apontamentos / OK)
+ */
+function isItemDanificado(itemText) {
+  return /danific/i.test(itemText);
+}
+
+/**
+ * Retorna se o item está em conformidade com base no texto e na resposta.
+ * Retorna true (conforme), false (não conforme) ou null (não preenchido).
+ */
+function isItemConforme(itemText, status) {
+  if (!status) return null;
+  const ehDanificado = isItemDanificado(itemText);
+  if (ehDanificado) {
+    return status === 'nao'; // NÃO está danificado => CONFORME!
+  } else {
+    return status === 'sim'; // SIM está identificado/correto => CONFORME!
+  }
+}
+
+// ==========================================
+// 7. CÁLCULO DE NÚMERO SEQUENCIAL PROGRESSIVO
 // ==========================================
 function getNextReportNumber() {
   if (!AppState.reports || AppState.reports.length === 0) return 1;
@@ -217,7 +354,7 @@ function getNextReportNumber() {
 }
 
 // ==========================================
-// 6. RENDERIZAÇÃO DO FORMULÁRIO DE CHECKLIST
+// 8. RENDERIZAÇÃO DO FORMULÁRIO DE CHECKLIST
 // ==========================================
 function renderChecklistForm(existingData = null) {
   const container = document.getElementById('checklist-sections-container');
@@ -229,9 +366,9 @@ function renderChecklistForm(existingData = null) {
     const sectionCard = document.createElement('div');
     sectionCard.className = 'bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6';
     
-    // Header da sessão
+    // Header da sessão com botão inteligente "Marcar Conforme"
     sectionCard.innerHTML = `
-      <div class="px-6 py-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+      <div class="px-6 py-4 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center space-x-3">
           <div class="w-8 h-8 rounded-lg bg-sky-100 text-[#007dc5] flex items-center justify-center font-bold">
             <i class="fas ${section.icon}"></i>
@@ -242,8 +379,10 @@ function renderChecklistForm(existingData = null) {
           </div>
         </div>
         <div class="flex items-center space-x-2">
-          <button type="button" onclick="marcarTudo('${section.id}', 'sim')" class="text-xs text-slate-600 hover:text-[#007dc5] font-medium px-2 py-1 rounded bg-white border border-slate-200 hover:border-slate-300 transition-colors">
-            Marcar Todos Sim
+          <button type="button" onclick="marcarTudoConforme('${section.id}')" 
+            class="text-xs text-slate-700 hover:text-emerald-700 font-semibold px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:border-emerald-400 hover:bg-emerald-50/50 transition-all flex items-center shadow-xs" 
+            title="Marca automaticamente todos os itens desta seção em conformidade">
+            <i class="fas fa-check-double text-emerald-600 mr-1.5"></i> Marcar Seção Conforme
           </button>
         </div>
       </div>
@@ -260,54 +399,92 @@ function renderChecklistForm(existingData = null) {
       const savedItem = existingData && existingData.items ? existingData.items[fieldKey] : null;
       const statusValue = savedItem ? savedItem.status : null; // 'sim', 'nao', ou null
       const motivoValue = savedItem ? savedItem.motivo || '' : '';
+      
+      const ehDanificado = isItemDanificado(itemText);
+      const conforme = isItemConforme(itemText, statusValue);
+
+      // Determinar classes visuais com base na conformidade
+      let rowClass = 'hover:bg-slate-50/70';
+      let motivoVisivel = false;
+
+      if (conforme === true) {
+        rowClass = 'item-sim-ativo';
+      } else if (conforme === false) {
+        rowClass = 'item-nao-ativo';
+        motivoVisivel = true;
+      }
+
+      // Configuração dos botões baseada na lógica invertida ou padrão
+      let simCheckedClass = 'peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600';
+      let simLabel = '<i class="fas fa-check text-[10px] mr-1"></i> SIM';
+      
+      let naoCheckedClass = 'peer-checked:bg-rose-600 peer-checked:text-white peer-checked:border-rose-600';
+      let naoLabel = '<i class="fas fa-times text-[10px] mr-1"></i> NÃO';
+
+      let labelMotivo = 'Descreva o não cumprimento / motivo da não conformidade:';
+      let placeholderMotivo = 'Especifique detalhadamente a divergência ou ação necessária...';
+
+      if (ehDanificado) {
+        // Lógica invertida: SIM significa danificado (defeito) e NÃO significa sem danos (conforme)
+        simCheckedClass = 'peer-checked:bg-rose-600 peer-checked:text-white peer-checked:border-rose-600';
+        simLabel = '<i class="fas fa-exclamation-triangle text-[10px] mr-1"></i> SIM (Danificado)';
+        
+        naoCheckedClass = 'peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600';
+        naoLabel = '<i class="fas fa-check text-[10px] mr-1"></i> NÃO (Sem Danos)';
+
+        labelMotivo = 'Descreva o que foi danificado / especifique a avaria:';
+        placeholderMotivo = 'Descreva o que foi danificado e o estado do componente...';
+      }
 
       const itemRow = document.createElement('div');
-      itemRow.className = `py-3.5 px-3 rounded-lg transition-all duration-150 mb-1 border border-transparent ${statusValue === 'nao' ? 'item-nao-ativo' : (statusValue === 'sim' ? 'item-sim-ativo' : 'hover:bg-slate-50/70')}`;
+      itemRow.className = `py-3.5 px-3 rounded-lg transition-all duration-150 mb-1 border border-transparent ${rowClass}`;
       itemRow.id = `row-${fieldKey}`;
 
       itemRow.innerHTML = `
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex items-start space-x-2.5">
             <span class="text-xs font-semibold text-slate-400 mt-0.5">${iIdx + 1}.</span>
-            <label class="text-sm font-medium text-slate-800 cursor-pointer select-none leading-relaxed" for="${fieldKey}-sim">
-              ${itemText}
-            </label>
+            <div>
+              <label class="text-sm font-medium text-slate-800 cursor-pointer select-none leading-relaxed" for="${fieldKey}-sim">
+                ${itemText}
+              </label>
+              ${ehDanificado ? 
+                '<span class="inline-block ml-2 text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">Verificação de Avaria</span>' : ''}
+            </div>
           </div>
           <div class="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
             <!-- Opção SIM -->
             <label class="inline-flex items-center cursor-pointer select-none">
               <input type="radio" name="${fieldKey}" id="${fieldKey}-sim" value="sim" ${statusValue === 'sim' ? 'checked' : ''} 
-                onchange="handleStatusChange('${fieldKey}', 'sim')" class="sr-only peer">
+                onchange="handleStatusChange('${fieldKey}', 'sim', ${ehDanificado})" class="sr-only peer">
               <span class="px-3.5 py-1.5 text-xs font-semibold rounded-md border border-slate-200 text-slate-600 bg-white 
-                peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600 
-                hover:border-slate-300 transition-all flex items-center space-x-1 shadow-sm">
-                <i class="fas fa-check text-[10px] mr-1"></i> SIM
+                ${simCheckedClass} hover:border-slate-300 transition-all flex items-center space-x-1 shadow-sm">
+                ${simLabel}
               </span>
             </label>
 
             <!-- Opção NÃO -->
             <label class="inline-flex items-center cursor-pointer select-none">
               <input type="radio" name="${fieldKey}" id="${fieldKey}-nao" value="nao" ${statusValue === 'nao' ? 'checked' : ''} 
-                onchange="handleStatusChange('${fieldKey}', 'nao')" class="sr-only peer">
+                onchange="handleStatusChange('${fieldKey}', 'nao', ${ehDanificado})" class="sr-only peer">
               <span class="px-3.5 py-1.5 text-xs font-semibold rounded-md border border-slate-200 text-slate-600 bg-white 
-                peer-checked:bg-rose-600 peer-checked:text-white peer-checked:border-rose-600 
-                hover:border-slate-300 transition-all flex items-center space-x-1 shadow-sm">
-                <i class="fas fa-times text-[10px] mr-1"></i> NÃO
+                ${naoCheckedClass} hover:border-slate-300 transition-all flex items-center space-x-1 shadow-sm">
+                ${naoLabel}
               </span>
             </label>
           </div>
         </div>
 
-        <!-- Campo expandido para descrição de Não Cumprimento -->
-        <div id="motivo-container-${fieldKey}" class="mt-3 ${statusValue === 'nao' ? 'block' : 'hidden'} expand-nao-field pl-5 sm:pl-7">
-          <div class="p-3 bg-white/90 border border-rose-200 rounded-lg shadow-inner">
-            <label class="block text-xs font-semibold text-rose-800 mb-1.5 flex items-center">
-              <i class="fas fa-exclamation-triangle mr-1.5 text-rose-500"></i>
-              Descreva o não cumprimento / motivo da não conformidade:
+        <!-- Campo expandido para descrição de Não Cumprimento ou O que foi danificado -->
+        <div id="motivo-container-${fieldKey}" class="mt-3 ${motivoVisivel ? 'block' : 'hidden'} expand-nao-field pl-5 sm:pl-7">
+          <div class="p-3 bg-white/95 border border-rose-300 rounded-lg shadow-xs">
+            <label class="block text-xs font-bold text-rose-800 mb-1.5 flex items-center">
+              <i class="fas fa-exclamation-triangle mr-1.5 text-rose-600"></i>
+              ${labelMotivo}
             </label>
             <textarea id="motivo-${fieldKey}" rows="2" 
-              placeholder="Especifique detalhadamente a divergência ou ação necessária..." 
-              class="w-full text-xs text-slate-800 bg-slate-50/50 border border-slate-200 rounded-md p-2 focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition-all">${motivoValue}</textarea>
+              placeholder="${placeholderMotivo}" 
+              class="w-full text-xs text-slate-800 bg-slate-50/50 border border-slate-200 rounded-md p-2 focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition-all">${escapeHtml(motivoValue)}</textarea>
           </div>
         </div>
       `;
@@ -317,13 +494,21 @@ function renderChecklistForm(existingData = null) {
   });
 }
 
-// Manipulação da mudança de status (Sim / Não)
-window.handleStatusChange = function(fieldKey, value) {
+// Manipulação da mudança de status (Sim / Não) considerando a lógica invertida de itens danificados
+window.handleStatusChange = function(fieldKey, value, ehDanificado) {
   const row = document.getElementById(`row-${fieldKey}`);
   const motivoContainer = document.getElementById(`motivo-container-${fieldKey}`);
   const motivoInput = document.getElementById(`motivo-${fieldKey}`);
 
-  if (value === 'nao') {
+  // Se for item Danificado:
+  // - value === 'sim' -> ESTÁ DANIFICADO (NÃO CONFORME) -> abrir campo
+  // - value === 'nao' -> NÃO ESTÁ DANIFICADO (CONFORME) -> ocultar campo
+  // Se for item normal:
+  // - value === 'nao' -> NÃO CONFORME -> abrir campo
+  // - value === 'sim' -> CONFORME -> ocultar campo
+  const ehNaoConforme = ehDanificado ? (value === 'sim') : (value === 'nao');
+
+  if (ehNaoConforme) {
     if (row) {
       row.classList.remove('item-sim-ativo', 'hover:bg-slate-50/70');
       row.classList.add('item-nao-ativo');
@@ -331,7 +516,7 @@ window.handleStatusChange = function(fieldKey, value) {
     if (motivoContainer) {
       motivoContainer.classList.remove('hidden');
       if (motivoInput) {
-        setTimeout(() => motivoInput.focus(), 50);
+        setTimeout(() => motivoInput.focus(), 60);
       }
     }
   } else {
@@ -343,20 +528,24 @@ window.handleStatusChange = function(fieldKey, value) {
       motivoContainer.classList.add('hidden');
     }
   }
+
   updateFormProgressCounters();
 };
 
-// Marcar todos de uma seção com Sim
-window.marcarTudo = function(sectionId, status) {
+// Marcar todos os itens da seção em conformidade de forma inteligente
+window.marcarTudoConforme = function(sectionId) {
   const section = CHECKLIST_SECTIONS.find(s => s.id === sectionId);
   if (!section) return;
 
-  section.items.forEach((_, idx) => {
+  section.items.forEach((itemText, idx) => {
     const key = `${sectionId}_item_${idx}`;
-    const radio = document.getElementById(`${key}-${status}`);
+    const ehDanificado = isItemDanificado(itemText);
+    // Para danificado: Conforme é NÃO. Para normal: Conforme é SIM.
+    const conformeValue = ehDanificado ? 'nao' : 'sim';
+    const radio = document.getElementById(`${key}-${conformeValue}`);
     if (radio) {
       radio.checked = true;
-      handleStatusChange(key, status);
+      handleStatusChange(key, conformeValue, ehDanificado);
     }
   });
 };
@@ -364,18 +553,25 @@ window.marcarTudo = function(sectionId, status) {
 function updateFormProgressCounters() {
   let totalItems = 0;
   let preenchidos = 0;
-  let totalNao = 0;
+  let totalNaoConformes = 0;
 
   CHECKLIST_SECTIONS.forEach(sec => {
-    sec.items.forEach((_, idx) => {
+    sec.items.forEach((itemText, idx) => {
       totalItems++;
       const key = `${sec.id}_item_${idx}`;
       const sim = document.getElementById(`${key}-sim`);
       const nao = document.getElementById(`${key}-nao`);
-      if (sim && sim.checked) preenchidos++;
-      if (nao && nao.checked) {
+      
+      let status = null;
+      if (sim && sim.checked) status = 'sim';
+      if (nao && nao.checked) status = 'nao';
+
+      if (status !== null) {
         preenchidos++;
-        totalNao++;
+        const conforme = isItemConforme(itemText, status);
+        if (conforme === false) {
+          totalNaoConformes++;
+        }
       }
     });
   });
@@ -384,11 +580,13 @@ function updateFormProgressCounters() {
   const progressBar = document.getElementById('form-progress-bar');
   const progressText = document.getElementById('form-progress-text');
   if (progressBar) progressBar.style.width = `${percent}%`;
-  if (progressText) progressText.textContent = `${preenchidos} de ${totalItems} itens verificados (${percent}%) - ${totalNao} não conformidades`;
+  if (progressText) {
+    progressText.textContent = `${preenchidos} de ${totalItems} itens verificados (${percent}%) - ${totalNaoConformes} não conformidade(s)`;
+  }
 }
 
 // ==========================================
-// 7. ASSINATURA DIGITAL
+// 9. ASSINATURA DIGITAL
 // ==========================================
 function initSignaturePad() {
   const canvas = document.getElementById('signature-pad');
@@ -428,7 +626,7 @@ function initSignaturePad() {
 }
 
 // ==========================================
-// 8. CRIAÇÃO, EDIÇÃO E SALVAMENTO DE RELATÓRIO
+// 10. CRIAÇÃO, EDIÇÃO E SALVAMENTO DE RELATÓRIO
 // ==========================================
 window.novoRelatorio = function() {
   AppState.isEditing = false;
@@ -439,16 +637,18 @@ window.novoRelatorio = function() {
   document.getElementById('form-report-number').value = nextNum;
   document.getElementById('form-report-id').value = 'rep_' + Date.now();
   
-  // Data e hora padrão atual
+  // Data e hora padrão atual no formato local
   const now = new Date();
-  const dataFormatada = now.toISOString().slice(0, 16);
-  document.getElementById('form-report-date').value = dataFormatada;
+  const tzOffset = now.getTimezoneOffset() * 60000;
+  const localISOTime = (new Date(now - tzOffset)).toISOString().slice(0, 16);
+  document.getElementById('form-report-date').value = localISOTime;
 
   document.getElementById('form-report-obra').value = '';
   document.getElementById('form-report-quadro').value = '';
   document.getElementById('form-report-inspector').value = '';
   document.getElementById('form-report-observacoes').value = '';
 
+  renderObrasDatalist();
   renderChecklistForm(null);
   switchView('form');
 
@@ -474,6 +674,7 @@ window.editarRelatorio = function(id) {
   document.getElementById('form-report-inspector').value = report.inspetor || '';
   document.getElementById('form-report-observacoes').value = report.observacoes || '';
 
+  renderObrasDatalist();
   renderChecklistForm(report);
   switchView('form');
 
@@ -495,9 +696,9 @@ window.salvarRelatorio = async function(andExportPdf = false) {
   const dataHoraIso = document.getElementById('form-report-date').value;
   const observacoes = document.getElementById('form-report-observacoes').value.trim();
 
-  // Validações básicas
+  // Validações essenciais
   if (!obra) {
-    alert("Por favor, preencha a identificação da Obra.");
+    alert("Por favor, preencha ou selecione a Obra.");
     document.getElementById('form-report-obra').focus();
     return;
   }
@@ -508,10 +709,13 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     return;
   }
 
-  // Coleta dos itens do checklist
+  // Registrar a obra salva para futuras escolhas
+  await registrarNovaObra(obra);
+
+  // Coleta dos itens do checklist com avaliação precisa de conformidade
   const items = {};
-  let totalSim = 0;
-  let totalNao = 0;
+  let totalConformes = 0;
+  let totalNaoConformes = 0;
   let naoPreenchidos = 0;
   const pendencias = [];
 
@@ -522,21 +726,27 @@ window.salvarRelatorio = async function(andExportPdf = false) {
       const naoRadio = document.getElementById(`${key}-nao`);
       const motivoInput = document.getElementById(`motivo-${key}`);
 
+      const ehDanificado = isItemDanificado(itemText);
       let status = null;
       let motivo = '';
 
-      if (simRadio && simRadio.checked) {
-        status = 'sim';
-        totalSim++;
-      } else if (naoRadio && naoRadio.checked) {
-        status = 'nao';
-        totalNao++;
+      if (simRadio && simRadio.checked) status = 'sim';
+      if (naoRadio && naoRadio.checked) status = 'nao';
+
+      if (status !== null) {
+        const conforme = isItemConforme(itemText, status);
         motivo = motivoInput ? motivoInput.value.trim() : '';
-        pendencias.push({
-          secao: sec.title,
-          item: itemText,
-          motivo: motivo || 'Sem justificativa preenchida'
-        });
+
+        if (conforme === true) {
+          totalConformes++;
+        } else {
+          totalNaoConformes++;
+          pendencias.push({
+            secao: sec.title,
+            item: itemText,
+            motivo: motivo || (ehDanificado ? 'Componente apontado como danificado' : 'Não conformidade registrada')
+          });
+        }
       } else {
         naoPreenchidos++;
       }
@@ -545,18 +755,22 @@ window.salvarRelatorio = async function(andExportPdf = false) {
         secao: sec.title,
         item: itemText,
         status: status,
+        ehDanificado: ehDanificado,
+        conforme: isItemConforme(itemText, status),
         motivo: motivo
       };
     });
   });
 
-  // Assinatura
+  // Assinatura digital
   let assinaturaDataUrl = '';
   if (AppState.signaturePad && !AppState.signaturePad.isEmpty()) {
     assinaturaDataUrl = AppState.signaturePad.toDataURL();
   } else if (AppState.currentReport && AppState.currentReport.assinatura) {
     assinaturaDataUrl = AppState.currentReport.assinatura;
   }
+
+  const totalRespondidos = totalConformes + totalNaoConformes;
 
   // Objeto estruturado do Relatório
   const reportData = {
@@ -571,11 +785,13 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     observacoes: observacoes,
     items: items,
     estatisticas: {
-      totalItens: totalSim + totalNao + naoPreenchidos,
-      totalSim: totalSim,
-      totalNao: totalNao,
+      totalItens: totalRespondidos + naoPreenchidos,
+      totalConformes: totalConformes,
+      totalNaoConformes: totalNaoConformes,
+      totalSim: totalConformes, // retrocompatibilidade
+      totalNao: totalNaoConformes, // retrocompatibilidade
       naoPreenchidos: naoPreenchidos,
-      percentualConformidade: (totalSim + totalNao) > 0 ? Math.round((totalSim / (totalSim + totalNao)) * 100) : 0
+      percentualConformidade: totalRespondidos > 0 ? Math.round((totalConformes / totalRespondidos) * 100) : 0
     },
     pendencias: pendencias,
     assinatura: assinaturaDataUrl,
@@ -599,13 +815,13 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     AppState.reports.unshift(reportData);
   }
   saveLocalReports(AppState.reports);
+  refreshObrasList();
 
-  // Notificação suave
   showToast(`Relatório Nº ${numero} salvo com sucesso!`, 'success');
 
   if (andExportPdf) {
     visualizarRelatorio(id);
-    setTimeout(() => exportarPDF(), 300);
+    setTimeout(() => exportarPDF(), 350);
   } else {
     visualizarRelatorio(id);
   }
@@ -628,13 +844,13 @@ window.excluirRelatorio = async function(id) {
 
   AppState.reports = AppState.reports.filter(r => r.id !== id);
   saveLocalReports(AppState.reports);
-  showToast(`Relatório excluído.`, 'info');
+  showToast(`Relatório excluído com sucesso.`, 'info');
   switchView('dashboard');
   renderAllViews();
 };
 
 // ==========================================
-// 9. VISUALIZAÇÃO E DETALHES
+// 11. VISUALIZAÇÃO DETALHADA DO RELATÓRIO
 // ==========================================
 window.visualizarRelatorio = function(id) {
   const report = AppState.reports.find(r => r.id === id);
@@ -649,8 +865,9 @@ function renderReportDetail(report) {
   const detailContainer = document.getElementById('report-detail-content');
   if (!detailContainer) return;
 
-  // Header com informações
-  const is100Conforme = report.estatisticas.totalNao === 0;
+  const totalNaoConformes = report.estatisticas.totalNaoConformes !== undefined ? 
+    report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
+  const is100Conforme = totalNaoConformes === 0;
 
   let sectionsHtml = '';
   CHECKLIST_SECTIONS.forEach(sec => {
@@ -660,19 +877,35 @@ function renderReportDetail(report) {
       const itemData = report.items ? report.items[key] : null;
       const status = itemData ? itemData.status : null;
       const motivo = itemData ? itemData.motivo : '';
+      const ehDanificado = isItemDanificado(itemText);
+      const conforme = isItemConforme(itemText, status);
+
+      let badgeStatus = '<span class="text-xs text-slate-400">N/A</span>';
+      if (status !== null) {
+        if (ehDanificado) {
+          badgeStatus = status === 'nao' ? 
+            '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800"><i class="fas fa-check mr-1"></i> NÃO (Sem Danos)</span>' :
+            '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-800"><i class="fas fa-exclamation-triangle mr-1"></i> SIM (Danificado)</span>';
+        } else {
+          badgeStatus = status === 'sim' ? 
+            '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800"><i class="fas fa-check mr-1"></i> SIM</span>' : 
+            '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-800"><i class="fas fa-times mr-1"></i> NÃO</span>';
+        }
+      }
 
       itemsRows += `
-        <tr class="border-b border-slate-100 hover:bg-slate-50/50">
-          <td class="py-2.5 px-4 text-xs font-medium text-slate-800">${itemText}</td>
-          <td class="py-2.5 px-4 text-center shrink-0">
-            ${status === 'sim' ? 
-              '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800"><i class="fas fa-check mr-1"></i> SIM</span>' : 
-              (status === 'nao' ? 
-                '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-800"><i class="fas fa-times mr-1"></i> NÃO</span>' : 
-                '<span class="text-xs text-slate-400">N/A</span>')}
+        <tr class="border-b border-slate-100 hover:bg-slate-50/50 ${conforme === false ? 'bg-rose-50/40' : ''}">
+          <td class="py-2.5 px-4 text-xs font-medium text-slate-800">
+            ${itemText}
+            ${ehDanificado ? '<span class="text-[10px] text-slate-400 ml-1.5">(Item de Dano)</span>' : ''}
           </td>
-          <td class="py-2.5 px-4 text-xs text-slate-600">
-            ${motivo ? `<span class="text-rose-700 font-medium bg-rose-50 px-2 py-1 rounded border border-rose-200 inline-block">${motivo}</span>` : '<span class="text-slate-400 italic">Conforme / Sem apontamento</span>'}
+          <td class="py-2.5 px-4 text-center shrink-0">
+            ${badgeStatus}
+          </td>
+          <td class="py-2.5 px-4 text-xs">
+            ${motivo ? 
+              `<span class="text-rose-800 font-semibold bg-rose-100/80 px-2 py-1 rounded border border-rose-200 inline-block">${escapeHtml(motivo)}</span>` : 
+              (conforme === true ? '<span class="text-emerald-700 italic font-medium">Conforme / Sem apontamento</span>' : '<span class="text-slate-400 italic">-</span>')}
           </td>
         </tr>
       `;
@@ -692,8 +925,8 @@ function renderReportDetail(report) {
             <thead>
               <tr class="bg-slate-100/50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                 <th class="py-2 px-4">Item de Verificação</th>
-                <th class="py-2 px-4 text-center w-28">Status</th>
-                <th class="py-2 px-4">Apontamento / Não Conformidade</th>
+                <th class="py-2 px-4 text-center w-36">Status</th>
+                <th class="py-2 px-4">Apontamento / Detalhe do Dano</th>
               </tr>
             </thead>
             <tbody>
@@ -716,7 +949,7 @@ function renderReportDetail(report) {
               <h2 class="text-2xl font-bold text-slate-900">${report.codigoRelatorio}</h2>
               ${is100Conforme ? 
                 '<span class="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-emerald-300">Conforme (100%)</span>' : 
-                `<span class="bg-rose-100 text-rose-800 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-rose-300">${report.estatisticas.totalNao} Não Conformidades</span>`}
+                `<span class="bg-rose-100 text-rose-800 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-rose-300">${totalNaoConformes} Não Conformidade(s)</span>`}
             </div>
             <p class="text-xs text-slate-500 mt-1">Checklist de Liberação e Conferência de Painel Elétrico</p>
           </div>
@@ -742,11 +975,11 @@ function renderReportDetail(report) {
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
         <div>
           <span class="block text-[11px] font-semibold text-slate-400 uppercase">Obra</span>
-          <span class="text-sm font-bold text-slate-800">${report.obra}</span>
+          <span class="text-sm font-bold text-slate-800">${escapeHtml(report.obra)}</span>
         </div>
         <div>
           <span class="block text-[11px] font-semibold text-slate-400 uppercase">Quadro Elétrico</span>
-          <span class="text-sm font-bold text-slate-800">${report.quadro || 'Geral'}</span>
+          <span class="text-sm font-bold text-slate-800">${escapeHtml(report.quadro || 'Geral')}</span>
         </div>
         <div>
           <span class="block text-[11px] font-semibold text-slate-400 uppercase">Data e Hora</span>
@@ -754,7 +987,7 @@ function renderReportDetail(report) {
         </div>
         <div>
           <span class="block text-[11px] font-semibold text-slate-400 uppercase">Inspetor Responsável</span>
-          <span class="text-sm font-bold text-[#007dc5]">${report.inspetor}</span>
+          <span class="text-sm font-bold text-[#007dc5]">${escapeHtml(report.inspetor)}</span>
         </div>
       </div>
 
@@ -766,11 +999,11 @@ function renderReportDetail(report) {
         </div>
         <div class="p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-center">
           <span class="text-xs text-emerald-700 font-medium">Itens Conformes</span>
-          <p class="text-xl font-bold text-emerald-800">${report.estatisticas.totalSim}</p>
+          <p class="text-xl font-bold text-emerald-800">${report.estatisticas.totalConformes !== undefined ? report.estatisticas.totalConformes : report.estatisticas.totalSim}</p>
         </div>
         <div class="p-3 bg-rose-50 rounded-lg border border-rose-200 text-center">
           <span class="text-xs text-rose-700 font-medium">Não Conformidades</span>
-          <p class="text-xl font-bold text-rose-800">${report.estatisticas.totalNao}</p>
+          <p class="text-xl font-bold text-rose-800">${totalNaoConformes}</p>
         </div>
       </div>
     </div>
@@ -784,7 +1017,7 @@ function renderReportDetail(report) {
         <i class="fas fa-comment-alt text-[#007dc5] mr-2"></i> Observações Gerais
       </h4>
       <p class="text-xs text-slate-700 bg-slate-50 p-4 rounded-lg border border-slate-200 leading-relaxed whitespace-pre-line">
-        ${report.observacoes || 'Nenhuma observação complementar informada.'}
+        ${escapeHtml(report.observacoes || 'Nenhuma observação complementar informada.')}
       </p>
     </div>
 
@@ -800,7 +1033,7 @@ function renderReportDetail(report) {
             `<span class="text-xs text-slate-400 italic">Assinatura digital não capturada</span>`}
         </div>
         <div>
-          <p class="text-sm font-bold text-slate-800">${report.inspetor}</p>
+          <p class="text-sm font-bold text-slate-800">${escapeHtml(report.inspetor)}</p>
           <p class="text-xs text-slate-500">Conferente / Responsável pelo Checklist</p>
           <p class="text-[11px] text-slate-400 mt-1">3D Ar Condicionado • Conclusão em ${report.dataHoraFormatada}</p>
         </div>
@@ -810,7 +1043,7 @@ function renderReportDetail(report) {
 }
 
 // ==========================================
-// 10. EXPORTAÇÃO PDF E EXCEL
+// 12. EXPORTAÇÃO PDF E EXCEL
 // ==========================================
 window.exportarPDF = function() {
   const report = AppState.currentReport;
@@ -819,7 +1052,9 @@ window.exportarPDF = function() {
   const pdfContainer = document.getElementById('pdf-template-wrapper');
   if (!pdfContainer) return;
 
-  // Montar template profissional para impressão
+  const totalNaoConformes = report.estatisticas.totalNaoConformes !== undefined ? 
+    report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
+
   pdfContainer.innerHTML = `
     <div style="font-family: 'Inter', sans-serif; color: #1e293b; padding: 24px; background: #ffffff;">
       <!-- Header do Relatório -->
@@ -839,10 +1074,10 @@ window.exportarPDF = function() {
 
       <!-- Metadados -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; margin-bottom: 16px; font-size: 11px;">
-        <div><strong>Obra:</strong> ${report.obra}</div>
-        <div><strong>Identificação / Tag:</strong> ${report.quadro || 'Geral'}</div>
-        <div><strong>Inspetor Responsável:</strong> ${report.inspetor}</div>
-        <div><strong>Conformidade:</strong> ${report.estatisticas.percentualConformidade}% (${report.estatisticas.totalNao} Não Conformidades)</div>
+        <div><strong>Obra:</strong> ${escapeHtml(report.obra)}</div>
+        <div><strong>Identificação / Tag:</strong> ${escapeHtml(report.quadro || 'Geral')}</div>
+        <div><strong>Inspetor Responsável:</strong> ${escapeHtml(report.inspetor)}</div>
+        <div><strong>Conformidade:</strong> ${report.estatisticas.percentualConformidade}% (${totalNaoConformes} Não Conformidade(s))</div>
       </div>
 
       <!-- Tabelas do Checklist -->
@@ -855,25 +1090,43 @@ window.exportarPDF = function() {
             <thead>
               <tr style="background: #f8fafc; border-bottom: 1px solid #cbd5e1; text-align: left;">
                 <th style="padding: 5px; width: 45%;">Item de Conferência</th>
-                <th style="padding: 5px; width: 12%; text-align: center;">Status</th>
-                <th style="padding: 5px; width: 43%;">Não Cumprimento / Observação</th>
+                <th style="padding: 5px; width: 15%; text-align: center;">Status</th>
+                <th style="padding: 5px; width: 40%;">Apontamento / O que foi danificado</th>
               </tr>
             </thead>
             <tbody>
               ${sec.items.map((itemText, idx) => {
                 const key = `${sec.id}_item_${idx}`;
                 const item = report.items ? report.items[key] : null;
-                const status = item ? item.status : '-';
+                const status = item ? item.status : null;
                 const motivo = item ? item.motivo : '';
-                const isNao = status === 'nao';
+                const ehDanificado = isItemDanificado(itemText);
+                const conforme = isItemConforme(itemText, status);
+
+                let statusLabel = '-';
+                let statusColor = '#64748b';
+
+                if (status !== null) {
+                  if (ehDanificado) {
+                    statusLabel = status === 'nao' ? 'NÃO (Sem Danos)' : 'SIM (Danificado)';
+                    statusColor = status === 'nao' ? '#166534' : '#991b1b';
+                  } else {
+                    statusLabel = status === 'sim' ? 'SIM' : 'NÃO';
+                    statusColor = status === 'sim' ? '#166534' : '#991b1b';
+                  }
+                }
 
                 return `
-                  <tr style="border-bottom: 1px solid #e2e8f0; background: ${isNao ? '#fef2f2' : 'transparent'};">
-                    <td style="padding: 4px 5px; font-weight: ${isNao ? '600' : 'normal'}; color: ${isNao ? '#991b1b' : '#334155'};">${itemText}</td>
-                    <td style="padding: 4px 5px; text-align: center; font-weight: bold; color: ${status === 'sim' ? '#166534' : (status === 'nao' ? '#991b1b' : '#64748b')};">
-                      ${status === 'sim' ? 'SIM' : (status === 'nao' ? 'NÃO' : '-')}
+                  <tr style="border-bottom: 1px solid #e2e8f0; background: ${conforme === false ? '#fef2f2' : 'transparent'};">
+                    <td style="padding: 4px 5px; font-weight: ${conforme === false ? '600' : 'normal'}; color: ${conforme === false ? '#991b1b' : '#334155'};">
+                      ${itemText}
                     </td>
-                    <td style="padding: 4px 5px; color: ${isNao ? '#991b1b' : '#64748b'};">${motivo || '-'}</td>
+                    <td style="padding: 4px 5px; text-align: center; font-weight: bold; color: ${statusColor};">
+                      ${statusLabel}
+                    </td>
+                    <td style="padding: 4px 5px; color: ${conforme === false ? '#991b1b' : '#64748b'};">
+                      ${motivo ? escapeHtml(motivo) : (conforme === true ? 'Conforme' : '-')}
+                    </td>
                   </tr>
                 `;
               }).join('')}
@@ -885,7 +1138,7 @@ window.exportarPDF = function() {
       <!-- Observações Gerais -->
       <div style="margin-top: 12px; padding: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 11px;">
         <strong style="color: #0f172a; display: block; margin-bottom: 4px;">Observações Complementares:</strong>
-        <p style="margin: 0; color: #475569; white-space: pre-line;">${report.observacoes || 'Sem observações adicionais.'}</p>
+        <p style="margin: 0; color: #475569; white-space: pre-line;">${escapeHtml(report.observacoes || 'Sem observações adicionais.')}</p>
       </div>
 
       <!-- Bloco de Assinatura -->
@@ -897,7 +1150,7 @@ window.exportarPDF = function() {
         <div style="text-align: center;">
           ${report.assinatura ? `<img src="${report.assinatura}" style="height: 44px; max-width: 180px; object-contain: contain; margin-bottom: 2px;">` : `<div style="height: 44px;"></div>`}
           <div style="border-top: 1px solid #000; width: 200px; margin: 0 auto; padding-top: 2px; font-size: 10px; font-weight: bold;">
-            ${report.inspetor}
+            ${escapeHtml(report.inspetor)}
           </div>
           <span style="font-size: 9px; color: #64748b;">Responsável pela Conferência</span>
         </div>
@@ -927,6 +1180,11 @@ window.exportarExcel = function() {
     return;
   }
 
+  const totalNaoConformes = report.estatisticas.totalNaoConformes !== undefined ? 
+    report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
+  const totalConformes = report.estatisticas.totalConformes !== undefined ? 
+    report.estatisticas.totalConformes : report.estatisticas.totalSim;
+
   const rows = [];
   rows.push(["3D AR CONDICIONADO - CHECKLIST DE QUADROS ELÉTRICOS"]);
   rows.push(["Código do Relatório:", report.codigoRelatorio]);
@@ -934,20 +1192,34 @@ window.exportarExcel = function() {
   rows.push(["Obra:", report.obra]);
   rows.push(["Identificação / Tag do Quadro:", report.quadro || "Geral"]);
   rows.push(["Inspetor Responsável:", report.inspetor]);
-  rows.push(["Itens Conformes:", report.estatisticas.totalSim]);
-  rows.push(["Não Conformidades:", report.estatisticas.totalNao]);
+  rows.push(["Itens Conformes:", totalConformes]);
+  rows.push(["Não Conformidades:", totalNaoConformes]);
   rows.push([]);
 
   // Cabeçalho da tabela de itens
-  rows.push(["Sessão", "Item de Conferência", "Status", "Descrição do Não Cumprimento"]);
+  rows.push(["Sessão", "Item de Conferência", "Status", "Conformidade", "O que foi danificado / Não Cumprimento"]);
 
   CHECKLIST_SECTIONS.forEach(sec => {
     sec.items.forEach((itemText, idx) => {
       const key = `${sec.id}_item_${idx}`;
       const item = report.items ? report.items[key] : null;
-      const status = item ? (item.status === 'sim' ? 'SIM' : (item.status === 'nao' ? 'NÃO' : '-')) : '-';
+      const status = item ? item.status : null;
+      const ehDanificado = isItemDanificado(itemText);
+      const conforme = isItemConforme(itemText, status);
+
+      let statusDisplay = '-';
+      if (status !== null) {
+        if (ehDanificado) {
+          statusDisplay = status === 'nao' ? 'NÃO (Sem Danos)' : 'SIM (Danificado)';
+        } else {
+          statusDisplay = status === 'sim' ? 'SIM' : 'NÃO';
+        }
+      }
+
+      const conformidadeDisplay = conforme === true ? 'CONFORME' : (conforme === false ? 'NÃO CONFORME' : '-');
       const motivo = item ? item.motivo || '' : '';
-      rows.push([sec.title, itemText, status, motivo]);
+
+      rows.push([sec.title, itemText, statusDisplay, conformidadeDisplay, motivo]);
     });
   });
 
@@ -959,11 +1231,11 @@ window.exportarExcel = function() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Checklist");
 
-  // Ajuste de largura das colunas
   ws['!cols'] = [
     { wch: 22 },
     { wch: 45 },
-    { wch: 12 },
+    { wch: 18 },
+    { wch: 16 },
     { wch: 50 }
   ];
 
@@ -972,7 +1244,7 @@ window.exportarExcel = function() {
 };
 
 // ==========================================
-// 11. DASHBOARD E MENU LATERAL DIREITO (ASANA STYLE)
+// 13. DASHBOARD E MENU LATERAL DIREITO (ASANA STYLE)
 // ==========================================
 function renderDashboard() {
   const container = document.getElementById('dashboard-reports-grid');
@@ -992,7 +1264,10 @@ function renderDashboard() {
 
   if (metricTotal) metricTotal.textContent = AppState.reports.length;
   if (metricNaoConformidades) {
-    const totalNao = AppState.reports.reduce((acc, r) => acc + (r.estatisticas ? r.estatisticas.totalNao : 0), 0);
+    const totalNao = AppState.reports.reduce((acc, r) => {
+      const nao = r.estatisticas ? (r.estatisticas.totalNaoConformes !== undefined ? r.estatisticas.totalNaoConformes : r.estatisticas.totalNao) : 0;
+      return acc + (Number(nao) || 0);
+    }, 0);
     metricNaoConformidades.textContent = totalNao;
   }
   if (metricUltima) {
@@ -1008,7 +1283,8 @@ function renderDashboard() {
   if (emptyState) emptyState.classList.add('hidden');
 
   container.innerHTML = filteredReports.map(report => {
-    const isConforme = report.estatisticas.totalNao === 0;
+    const totalNao = report.estatisticas ? (report.estatisticas.totalNaoConformes !== undefined ? report.estatisticas.totalNaoConformes : report.estatisticas.totalNao) : 0;
+    const isConforme = totalNao === 0;
 
     return `
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm hover:border-[#007dc5]/50 transition-card p-5 flex flex-col justify-between cursor-pointer" onclick="visualizarRelatorio('${report.id}')">
@@ -1019,18 +1295,18 @@ function renderDashboard() {
             </span>
             ${isConforme ? 
               '<span class="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200"><i class="fas fa-check-circle mr-1"></i> Conforme</span>' : 
-              `<span class="inline-flex items-center text-xs font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200"><i class="fas fa-exclamation-triangle mr-1"></i> ${report.estatisticas.totalNao} Não Conformidades</span>`}
+              `<span class="inline-flex items-center text-xs font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200"><i class="fas fa-exclamation-triangle mr-1"></i> ${totalNao} Não Conformidade(s)</span>`}
           </div>
 
-          <h3 class="text-base font-bold text-slate-800 line-clamp-1 mb-1" title="${report.obra}">${report.obra}</h3>
+          <h3 class="text-base font-bold text-slate-800 line-clamp-1 mb-1" title="${escapeHtml(report.obra)}">${escapeHtml(report.obra)}</h3>
           <p class="text-xs text-slate-500 mb-4 flex items-center">
-            <i class="fas fa-cubes text-slate-400 mr-1.5"></i> ${report.quadro || 'Painel Elétrico'}
+            <i class="fas fa-cubes text-slate-400 mr-1.5"></i> ${escapeHtml(report.quadro || 'Painel Elétrico')}
           </p>
 
           <div class="space-y-1.5 pt-3 border-t border-slate-100 text-xs text-slate-600">
             <div class="flex items-center justify-between">
               <span class="text-slate-400"><i class="fas fa-user mr-1.5 text-slate-400"></i> Inspetor:</span>
-              <span class="font-medium text-slate-700">${report.inspetor}</span>
+              <span class="font-medium text-slate-700">${escapeHtml(report.inspetor)}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-slate-400"><i class="fas fa-calendar mr-1.5 text-slate-400"></i> Data:</span>
@@ -1075,7 +1351,8 @@ function renderRightSidebar() {
 
   sidebarList.innerHTML = filtered.map(report => {
     const isSelected = AppState.currentReport && AppState.currentReport.id === report.id;
-    const isConforme = report.estatisticas.totalNao === 0;
+    const totalNao = report.estatisticas ? (report.estatisticas.totalNaoConformes !== undefined ? report.estatisticas.totalNaoConformes : report.estatisticas.totalNao) : 0;
+    const isConforme = totalNao === 0;
 
     return `
       <div onclick="visualizarRelatorio('${report.id}')" 
@@ -1083,13 +1360,13 @@ function renderRightSidebar() {
         <div class="flex items-center justify-between mb-1">
           <span class="text-xs font-bold ${isSelected ? 'text-[#007dc5]' : 'text-slate-800'}">${report.codigoRelatorio}</span>
           <span class="text-[10px] ${isConforme ? 'text-emerald-600 bg-emerald-50' : 'text-rose-600 bg-rose-50'} px-1.5 py-0.5 rounded font-medium">
-            ${isConforme ? '100% OK' : `${report.estatisticas.totalNao} pendência(s)`}
+            ${isConforme ? '100% OK' : `${totalNao} pendência(s)`}
           </span>
         </div>
-        <div class="text-xs font-medium text-slate-700 truncate" title="${report.obra}">${report.obra}</div>
+        <div class="text-xs font-medium text-slate-700 truncate" title="${escapeHtml(report.obra)}">${escapeHtml(report.obra)}</div>
         <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-          <span>${report.inspetor}</span>
-          <span>${report.dataHoraFormatada.split(' ')[0]}</span>
+          <span>${escapeHtml(report.inspetor)}</span>
+          <span>${report.dataHoraFormatada ? report.dataHoraFormatada.split(' ')[0] : ''}</span>
         </div>
       </div>
     `;
@@ -1110,10 +1387,11 @@ function getFilteredReports() {
 function renderAllViews() {
   renderDashboard();
   renderRightSidebar();
+  renderObrasDatalist();
 }
 
 // ==========================================
-// 12. NAVEGAÇÃO DE TELAS (VIEW SWITCHER)
+// 14. NAVEGAÇÃO DE TELAS (VIEW SWITCHER)
 // ==========================================
 window.switchView = function(viewName) {
   AppState.currentView = viewName;
@@ -1140,8 +1418,18 @@ window.switchView = function(viewName) {
 };
 
 // ==========================================
-// 13. UTILITÁRIOS
+// 15. UTILITÁRIOS
 // ==========================================
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function formatarData(isoString) {
   if (!isoString) return '-';
   try {
@@ -1194,7 +1482,6 @@ window.toggleSidebar = function() {
   }
 };
 
-
 // Busca global
 window.handleSearch = function(query) {
   AppState.searchQuery = query;
@@ -1202,7 +1489,7 @@ window.handleSearch = function(query) {
 };
 
 // ==========================================
-// 14. INICIALIZAÇÃO NO DOM READY
+// 16. INICIALIZAÇÃO NO DOM READY
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
   // Preencher Select de Inspetores
@@ -1216,12 +1503,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Listener da busca
+  // Listener da busca global
   const searchInput = document.getElementById('global-search-input');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => handleSearch(e.target.value));
   }
 
+  // Listener da busca na sidebar
   const sidebarSearchInput = document.getElementById('sidebar-search-input');
   if (sidebarSearchInput) {
     sidebarSearchInput.addEventListener('input', (e) => handleSearch(e.target.value));
