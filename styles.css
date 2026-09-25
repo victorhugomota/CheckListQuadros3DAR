@@ -86,7 +86,8 @@ body {
   #toast-container,
   .no-print,
   #view-dashboard,
-  #view-form {
+  #view-form,
+  #pdf-export-wrapper {
     display: none !important;
   }
 
@@ -116,19 +117,19 @@ body {
 }
 
 /* Área de impressão para PDF */
-#pdf-render-box {
-  width: 794px;
+#pdf-render-content {
+  width: 780px;
   background: #ffffff;
   color: #1e293b;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', Arial, sans-serif;
   box-sizing: border-box;
 }
 
-#pdf-render-box table {
+#pdf-render-content table {
   page-break-inside: auto;
 }
 
-#pdf-render-box tr {
+#pdf-render-content tr {
   page-break-inside: avoid;
 }
 

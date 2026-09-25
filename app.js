@@ -132,15 +132,74 @@ const AppState = {
 };
 
 // ==========================================
-// 4. STORAGE & SINCRONIZAÇÃO
+// ==========================================
+// 4. STORAGE & SINCRONIZAÇÃO RESILIENTE
 // ==========================================
 const LOCAL_STORAGE_REPORTS_KEY = '3dar_quadros_checklist_relatorios';
 const LOCAL_STORAGE_OBRAS_KEY = '3dar_quadros_obras_salvas';
+const LOCAL_STORAGE_DELETED_REPORTS_KEY = '3dar_quadros_relatorios_deletados';
+const LOCAL_STORAGE_DELETED_OBRAS_KEY = '3dar_quadros_obras_deletadas';
+
+function getDeletedReportIds() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_DELETED_REPORTS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function addDeletedReportId(id) {
+  if (!id) return;
+  try {
+    const set = getDeletedReportIds();
+    set.add(id);
+    localStorage.setItem(LOCAL_STORAGE_DELETED_REPORTS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {}
+}
+
+function removeDeletedReportId(id) {
+  if (!id) return;
+  try {
+    const set = getDeletedReportIds();
+    set.delete(id);
+    localStorage.setItem(LOCAL_STORAGE_DELETED_REPORTS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {}
+}
+
+function getDeletedObras() {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_DELETED_OBRAS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function addDeletedObra(nome) {
+  if (!nome || !nome.trim()) return;
+  try {
+    const set = getDeletedObras();
+    set.add(nome.trim().toLowerCase());
+    localStorage.setItem(LOCAL_STORAGE_DELETED_OBRAS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {}
+}
+
+function removeDeletedObra(nome) {
+  if (!nome || !nome.trim()) return;
+  try {
+    const set = getDeletedObras();
+    set.delete(nome.trim().toLowerCase());
+    localStorage.setItem(LOCAL_STORAGE_DELETED_OBRAS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {}
+}
 
 function loadLocalReports() {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_REPORTS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const list = raw ? JSON.parse(raw) : [];
+    const deleted = getDeletedReportIds();
+    return list.filter(r => r && r.id && !deleted.has(r.id));
   } catch (e) {
     console.error("Erro ao carregar dados locais:", e);
     return [];
@@ -149,7 +208,9 @@ function loadLocalReports() {
 
 function saveLocalReports(reports) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_REPORTS_KEY, JSON.stringify(reports));
+    const deleted = getDeletedReportIds();
+    const cleanList = reports.filter(r => r && r.id && !deleted.has(r.id));
+    localStorage.setItem(LOCAL_STORAGE_REPORTS_KEY, JSON.stringify(cleanList));
   } catch (e) {
     console.error("Erro ao salvar relatórios localmente:", e);
   }
@@ -158,7 +219,9 @@ function saveLocalReports(reports) {
 function loadLocalObras() {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_OBRAS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const list = raw ? JSON.parse(raw) : [];
+    const deleted = getDeletedObras();
+    return list.filter(o => o && !deleted.has(o.trim().toLowerCase()));
   } catch (e) {
     return [];
   }
@@ -166,7 +229,9 @@ function loadLocalObras() {
 
 function saveLocalObras(obras) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_OBRAS_KEY, JSON.stringify(obras));
+    const deleted = getDeletedObras();
+    const cleanList = obras.filter(o => o && !deleted.has(o.trim().toLowerCase()));
+    localStorage.setItem(LOCAL_STORAGE_OBRAS_KEY, JSON.stringify(cleanList));
   } catch (e) {
     console.error("Erro ao salvar obras localmente:", e);
   }
@@ -184,10 +249,17 @@ async function initDataSync() {
       db.collection("relatorios_quadros")
         .orderBy("numero", "desc")
         .onSnapshot((snapshot) => {
+          const currentDeleted = getDeletedReportIds();
           const cloudReports = [];
+
           snapshot.forEach(doc => {
-            const data = doc.data();
-            cloudReports.push({ ...data, id: doc.id });
+            if (currentDeleted.has(doc.id)) {
+              // Tenta expurgar do Firestore se estiver na blacklist local de exclusão
+              doc.ref.delete().catch(() => {});
+            } else {
+              const data = doc.data();
+              cloudReports.push({ ...data, id: doc.id });
+            }
           });
 
           if (cloudReports.length > 0) {
@@ -195,9 +267,15 @@ async function initDataSync() {
             saveLocalReports(cloudReports);
           } else if (AppState.reports.length > 0) {
             AppState.reports.forEach(r => {
-              db.collection("relatorios_quadros").doc(r.id).set(r).catch(console.warn);
+              if (!currentDeleted.has(r.id)) {
+                db.collection("relatorios_quadros").doc(r.id).set(r).catch(() => {});
+              }
             });
+          } else {
+            AppState.reports = [];
+            saveLocalReports([]);
           }
+
           refreshObrasList();
           updateSyncBadge('online');
           renderAllViews();
@@ -208,10 +286,16 @@ async function initDataSync() {
 
       db.collection("obras_cadastradas")
         .onSnapshot((snapshot) => {
+          const currentDeletedObras = getDeletedObras();
           snapshot.forEach(doc => {
             const data = doc.data();
-            if (data && data.nome && !AppState.obras.includes(data.nome)) {
-              AppState.obras.push(data.nome);
+            if (data && data.nome) {
+              const nome = data.nome.trim();
+              if (currentDeletedObras.has(nome.toLowerCase())) {
+                doc.ref.delete().catch(() => {});
+              } else if (!AppState.obras.some(o => o.toLowerCase() === nome.toLowerCase())) {
+                AppState.obras.push(nome);
+              }
             }
           });
           refreshObrasList();
@@ -248,9 +332,17 @@ function updateSyncBadge(status) {
 // 5. GESTÃO DE OBRAS SALVAS (AUTOCOMPLETE & TAGS)
 // ==========================================
 function refreshObrasList() {
-  const set = new Set(AppState.obras);
+  const deletedObras = getDeletedObras();
+  const set = new Set();
+
+  AppState.obras.forEach(o => {
+    if (o && o.trim() && !deletedObras.has(o.trim().toLowerCase())) {
+      set.add(o.trim());
+    }
+  });
+
   AppState.reports.forEach(r => {
-    if (r.obra && r.obra.trim()) {
+    if (r.obra && r.obra.trim() && !deletedObras.has(r.obra.trim().toLowerCase())) {
       set.add(r.obra.trim());
     }
   });
@@ -274,11 +366,17 @@ function renderObrasDatalist() {
     } else {
       container.innerHTML = `
         <span class="text-[10px] text-slate-400 font-semibold uppercase mr-1">Obras Salvas:</span>
-        ${AppState.obras.slice(0, 10).map(o => `
-          <button type="button" onclick="selecionarObra('${escapeHtml(o)}')" 
-            class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 hover:bg-sky-100 text-slate-700 hover:text-[#007dc5] border border-slate-200 hover:border-sky-300 transition-colors shadow-2xs">
-            <i class="fas fa-building text-[9px] mr-1 text-slate-400"></i> ${escapeHtml(o)}
-          </button>
+        ${AppState.obras.slice(0, 15).map(o => `
+          <span class="inline-flex items-center rounded-md text-[11px] font-medium bg-slate-100 hover:bg-slate-200/80 border border-slate-200 transition-colors shadow-2xs overflow-hidden">
+            <button type="button" onclick="selecionarObra('${escapeHtml(o)}')" 
+              class="px-2 py-0.5 text-slate-700 hover:text-[#007dc5] flex items-center" title="Preencher com esta obra">
+              <i class="fas fa-building text-[9px] mr-1 text-slate-400"></i> ${escapeHtml(o)}
+            </button>
+            <button type="button" onclick="excluirObraSalva('${escapeHtml(o)}', event)" 
+              class="px-1.5 py-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border-l border-slate-200 transition-colors" title="Excluir obra da lista">
+              <i class="fas fa-times text-[9px]"></i>
+            </button>
+          </span>
         `).join('')}
       `;
     }
@@ -293,10 +391,43 @@ window.selecionarObra = function(nome) {
   }
 };
 
+window.excluirObraSalva = async function(nome, event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  if (!nome || !nome.trim()) return;
+
+  const limpo = nome.trim();
+  if (!confirm(`Deseja remover a obra "${limpo}" da lista de obras salvas?`)) {
+    return;
+  }
+
+  addDeletedObra(limpo);
+  AppState.obras = AppState.obras.filter(o => o.toLowerCase() !== limpo.toLowerCase());
+  saveLocalObras(AppState.obras);
+
+  if (db) {
+    try {
+      const docId = limpo.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      await db.collection("obras_cadastradas").doc(docId).delete();
+    } catch (e) {
+      console.warn("Erro ao deletar obra Firestore:", e);
+    }
+  }
+
+  refreshObrasList();
+  showToast(`Obra "${limpo}" removida das opções salvas.`, 'info');
+};
+
 async function registrarNovaObra(nomeObra) {
   if (!nomeObra || !nomeObra.trim()) return;
   const limpo = nomeObra.trim();
-  if (!AppState.obras.includes(limpo)) {
+
+  // Caso tenha sido excluída anteriormente, remove da blacklist pois o usuário a recadastrou explicitamente
+  removeDeletedObra(limpo);
+
+  if (!AppState.obras.some(o => o.toLowerCase() === limpo.toLowerCase())) {
     AppState.obras.push(limpo);
     saveLocalObras(AppState.obras);
     refreshObrasList();
@@ -1013,6 +1144,9 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     atualizadoEm: new Date().toISOString()
   };
 
+  // Se o relatório estava anteriormente na lista de deletados, remove da blacklist
+  removeDeletedReportId(id);
+
   try {
     if (db) {
       await db.collection("relatorios_quadros").doc(id).set(reportData);
@@ -1043,21 +1177,46 @@ window.salvarRelatorio = async function(andExportPdf = false) {
 window.excluirRelatorio = async function(id) {
   const report = AppState.reports.find(r => r.id === id);
   const num = report ? report.numero : '';
+  const obraNome = report && report.obra ? report.obra.trim() : null;
+
   if (!confirm(`Tem certeza que deseja excluir o Relatório Nº ${num}? Esta ação não pode ser desfeita.`)) {
     return;
   }
 
+  // 1. Marca imediatamente na blacklist persistente para nunca mais voltar ao atualizar a página
+  addDeletedReportId(id);
+
+  // 2. Remove do estado em memória e do armazenamento local
+  AppState.reports = AppState.reports.filter(r => r.id !== id);
+  saveLocalReports(AppState.reports);
+
+  // 3. Verifica se a obra gerada só existia neste relatório. Se não houver mais relatórios com ela, limpa a obra
+  if (obraNome) {
+    const outrasComMesmaObra = AppState.reports.filter(r => r.obra && r.obra.trim().toLowerCase() === obraNome.toLowerCase());
+    if (outrasComMesmaObra.length === 0) {
+      addDeletedObra(obraNome);
+      AppState.obras = AppState.obras.filter(o => o.toLowerCase() !== obraNome.toLowerCase());
+      saveLocalObras(AppState.obras);
+      if (db) {
+        try {
+          const docId = obraNome.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          db.collection("obras_cadastradas").doc(docId).delete().catch(() => {});
+        } catch (e) {}
+      }
+    }
+  }
+
+  // 4. Executa a exclusão no Firestore
   try {
     if (db) {
       await db.collection("relatorios_quadros").doc(id).delete();
     }
   } catch (e) {
-    console.warn("Erro ao deletar Firestore:", e);
+    console.warn("Aviso ao deletar Firestore:", e);
   }
 
-  AppState.reports = AppState.reports.filter(r => r.id !== id);
-  saveLocalReports(AppState.reports);
-  showToast(`Relatório excluído com sucesso.`, 'info');
+  refreshObrasList();
+  showToast(`Relatório Nº ${num} excluído com sucesso.`, 'info');
   switchView('dashboard');
   renderAllViews();
 };
@@ -1340,11 +1499,22 @@ function preloadLogo() {
   fetch('logo 3d.svg')
     .then(r => r.text())
     .then(svgText => {
+      if (!svgText.includes('width=')) {
+        svgText = svgText.replace('<svg ', '<svg width="490" height="291" ');
+      }
       cachedLogoSvgDataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
     })
     .catch(err => {
       console.warn("Logo fallback dataurl:", err);
     });
+}
+
+function chunkArray(arr, size) {
+  const chunks = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
 }
 
 window.imprimirRelatorio = function() {
@@ -1358,30 +1528,32 @@ window.exportarPDF = async function() {
     return;
   }
 
-  showToast("Gerando PDF com registros fotográficos...", "info");
+  showToast("Gerando laudo técnico em PDF...", "info");
 
-  const overlay = document.createElement('div');
-  overlay.id = 'pdf-loading-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:99998;display:flex;align-items:center;justify-content:center;color:#fff;';
-  overlay.innerHTML = `
-    <div style="background:#fff;color:#1e293b;padding:24px 32px;border-radius:12px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);text-align:center;max-width:360px;">
-      <i class="fas fa-circle-notch fa-spin text-3xl text-[#007dc5]" style="margin-bottom:12px;"></i>
-      <h4 style="font-weight:700;font-size:15px;margin:0 0 4px 0;">Gerando Relatório em PDF</h4>
-      <p style="font-size:12px;color:#64748b;margin:0;">Otimizando evidências fotográficas e assinaturas...</p>
-    </div>
-  `;
-  document.body.appendChild(overlay);
+  // Container de renderização em fluxo normal para evitar o bug de colapso de altura zero no html2pdf
+  const renderWrapper = document.createElement('div');
+  renderWrapper.id = 'pdf-export-wrapper';
+  renderWrapper.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#ffffff;z-index:999999;overflow-y:auto;padding:16px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;';
 
-  const renderBox = document.createElement('div');
-  renderBox.id = 'pdf-render-box';
-  renderBox.style.cssText = 'position:absolute;top:0;left:0;width:794px;background:#ffffff;color:#1e293b;z-index:99999;padding:24px;box-sizing:border-box;font-family:\'Inter\',sans-serif;';
+  const progressNotice = document.createElement('div');
+  progressNotice.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#007dc5;color:#ffffff;padding:12px 20px;border-radius:8px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.35);font-weight:600;font-size:13px;z-index:1000000;display:flex;align-items:center;gap:10px;font-family:\'Inter\',sans-serif;';
+  progressNotice.innerHTML = '<i class="fas fa-circle-notch fa-spin text-base"></i> Renderizando Laudo em PDF...';
+  renderWrapper.appendChild(progressNotice);
+
+  const renderContent = document.createElement('div');
+  renderContent.id = 'pdf-render-content';
+  renderContent.style.cssText = 'width:780px;background:#ffffff;color:#1e293b;padding:24px;box-sizing:border-box;font-family:\'Inter\',Arial,sans-serif;line-height:1.35;box-shadow:0 0 10px rgba(0,0,0,0.08);';
+  renderWrapper.appendChild(renderContent);
+
+  document.body.appendChild(renderWrapper);
+  window.scrollTo(0, 0);
 
   const totalNaoConformes = report.estatisticas.totalNaoConformes !== undefined ? 
     report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
 
   const logoSrc = cachedLogoSvgDataUrl || 'logo 3d.svg';
 
-  // Coleta de fotos para o anexo fotográfico do PDF
+  // Coleta de todas as fotos para o anexo fotográfico do PDF
   const fotosPdf = [];
   if (report.items) {
     Object.keys(report.items).forEach(k => {
@@ -1411,43 +1583,70 @@ window.exportarPDF = async function() {
     });
   }
 
-  renderBox.innerHTML = `
-    <div style="font-family:'Inter',sans-serif;color:#1e293b;background:#ffffff;">
+  // Montagem do layout puramente em tabelas (compatibilidade total com html2canvas)
+  renderContent.innerHTML = `
+    <div style="font-family:'Inter',Arial,sans-serif;color:#1e293b;background:#ffffff;font-size:11px;">
       <!-- Header do Relatório -->
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #007dc5;padding-bottom:12px;margin-bottom:16px;">
-        <div style="display:flex;align-items:center;gap:12px;">
-          <img src="${logoSrc}" style="height:48px;width:auto;max-width:180px;object-fit:contain;" alt="3D Ar">
-          <div>
-            <h1 style="font-size:16px;font-weight:800;color:#007dc5;margin:0;text-transform:uppercase;">3D Ar Condicionado</h1>
-            <p style="font-size:11px;color:#64748b;margin:2px 0 0 0;">Checklist de Conferência de Quadros Elétricos</p>
-          </div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:16px;font-weight:800;color:#0f172a;">${report.codigoRelatorio}</div>
-          <div style="font-size:11px;color:#64748b;">${report.dataHoraFormatada}</div>
-        </div>
-      </div>
+      <table style="width:100%;border-bottom:2px solid #007dc5;padding-bottom:12px;margin-bottom:14px;border-collapse:collapse;">
+        <tr>
+          <td style="width:60%;vertical-align:middle;">
+            <table style="border-collapse:collapse;">
+              <tr>
+                <td style="vertical-align:middle;padding-right:12px;">
+                  <img src="${logoSrc}" style="height:48px;width:auto;max-width:180px;object-fit:contain;display:block;" alt="3D Ar">
+                </td>
+                <td style="vertical-align:middle;">
+                  <div style="font-size:16px;font-weight:800;color:#007dc5;text-transform:uppercase;line-height:1.2;">3D Ar Condicionado</div>
+                  <div style="font-size:10px;color:#64748b;font-weight:500;margin-top:2px;">Checklist de Conferência de Quadros Elétricos</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+          <td style="width:40%;text-align:right;vertical-align:middle;">
+            <div style="font-size:17px;font-weight:800;color:#0f172a;">${report.codigoRelatorio}</div>
+            <div style="font-size:10.5px;color:#64748b;margin-top:2px;">Emissão: ${report.dataHoraFormatada}</div>
+          </td>
+        </tr>
+      </table>
 
-      <!-- Metadados -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px;margin-bottom:16px;font-size:11px;">
-        <div><strong>Obra:</strong> ${escapeHtml(report.obra)}</div>
-        <div><strong>Identificação / Tag:</strong> ${escapeHtml(report.quadro || 'Geral')}</div>
-        <div><strong>Inspetor Responsável:</strong> ${escapeHtml(report.inspetor)}</div>
-        <div><strong>Conformidade:</strong> ${report.estatisticas.percentualConformidade}% (${totalNaoConformes} Não Conformidade(s))</div>
-      </div>
+      <!-- Bloco de Metadados em Tabela -->
+      <table style="width:100%;border-collapse:collapse;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:14px;font-size:11px;">
+        <tr>
+          <td style="width:50%;padding:8px 12px;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;vertical-align:top;">
+            <span style="color:#64748b;font-size:10px;display:block;font-weight:600;text-transform:uppercase;">Obra / Local</span>
+            <strong style="color:#0f172a;font-size:12px;">${escapeHtml(report.obra)}</strong>
+          </td>
+          <td style="width:50%;padding:8px 12px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+            <span style="color:#64748b;font-size:10px;display:block;font-weight:600;text-transform:uppercase;">Identificação / Tag do Quadro</span>
+            <strong style="color:#0f172a;font-size:12px;">${escapeHtml(report.quadro || 'Geral')}</strong>
+          </td>
+        </tr>
+        <tr>
+          <td style="width:50%;padding:8px 12px;border-right:1px solid #e2e8f0;vertical-align:top;">
+            <span style="color:#64748b;font-size:10px;display:block;font-weight:600;text-transform:uppercase;">Inspetor Responsável</span>
+            <strong style="color:#007dc5;font-size:12px;">${escapeHtml(report.inspetor)}</strong>
+          </td>
+          <td style="width:50%;padding:8px 12px;vertical-align:top;">
+            <span style="color:#64748b;font-size:10px;display:block;font-weight:600;text-transform:uppercase;">Status de Conformidade</span>
+            <strong style="color:${totalNaoConformes === 0 ? '#166534' : '#991b1b'};font-size:12px;">
+              ${report.estatisticas.percentualConformidade}% Conforme (${totalNaoConformes} Não Conformidade(s))
+            </strong>
+          </td>
+        </tr>
+      </table>
 
-      <!-- Tabelas do Checklist -->
+      <!-- Tabelas do Checklist por Seção -->
       ${CHECKLIST_SECTIONS.map(sec => `
         <div style="margin-bottom:14px;page-break-inside:avoid;">
-          <div style="background:#f1f5f9;padding:6px 10px;font-size:12px;font-weight:700;color:#0f172a;border-left:4px solid #007dc5;">
+          <div style="background:#f1f5f9;padding:6px 10px;font-size:11px;font-weight:700;color:#0f172a;border-left:4px solid #007dc5;">
             ${sec.title}
           </div>
           <table style="width:100%;border-collapse:collapse;font-size:10px;margin-top:4px;">
             <thead>
               <tr style="background:#f8fafc;border-bottom:1px solid #cbd5e1;text-align:left;">
-                <th style="padding:5px;width:45%;">Item de Conferência</th>
-                <th style="padding:5px;width:18%;text-align:center;">Status</th>
-                <th style="padding:5px;width:37%;">Apontamento / Não Cumprimento</th>
+                <th style="padding:5px 6px;width:44%;color:#475569;font-weight:700;">Item de Conferência</th>
+                <th style="padding:5px 6px;width:20%;text-align:center;color:#475569;font-weight:700;">Status</th>
+                <th style="padding:5px 6px;width:36%;color:#475569;font-weight:700;">Apontamento / Detalhe</th>
               </tr>
             </thead>
             <tbody>
@@ -1462,28 +1661,33 @@ window.exportarPDF = async function() {
 
                 let statusLabel = '-';
                 let statusColor = '#64748b';
+                let statusBg = '#f1f5f9';
 
                 if (status !== null) {
                   if (ehDanificado) {
                     statusLabel = status === 'nao' ? 'NÃO (Sem Danos)' : 'SIM (Danificado)';
                     statusColor = status === 'nao' ? '#166534' : '#991b1b';
+                    statusBg = status === 'nao' ? '#dcfce7' : '#fee2e2';
                   } else {
-                    statusLabel = status === 'sim' ? 'SIM' : 'NÃO';
+                    statusLabel = status === 'sim' ? 'SIM (Conforme)' : 'NÃO (Inconforme)';
                     statusColor = status === 'sim' ? '#166534' : '#991b1b';
+                    statusBg = status === 'sim' ? '#dcfce7' : '#fee2e2';
                   }
                 }
 
                 return `
                   <tr style="border-bottom:1px solid #e2e8f0;background:${conforme === false ? '#fef2f2' : 'transparent'};page-break-inside:avoid;">
-                    <td style="padding:4px 5px;font-weight:${conforme === false ? '600' : 'normal'};color:${conforme === false ? '#991b1b' : '#334155'};">
+                    <td style="padding:4px 6px;font-weight:${conforme === false ? '600' : 'normal'};color:${conforme === false ? '#991b1b' : '#334155'};">
                       ${itemText}
                       ${fotos.length > 0 ? 
                         `<span style="display:inline-block;padding:1px 4px;font-size:8px;background:#e0f2fe;color:#0369a1;border-radius:3px;margin-left:4px;font-weight:bold;">📷 ${fotos.length} foto(s)</span>` : ''}
                     </td>
-                    <td style="padding:4px 5px;text-align:center;font-weight:bold;color:${statusColor};">
-                      ${statusLabel}
+                    <td style="padding:4px 6px;text-align:center;">
+                      <span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:bold;background:${statusBg};color:${statusColor};">
+                        ${statusLabel}
+                      </span>
                     </td>
-                    <td style="padding:4px 5px;color:${conforme === false ? '#991b1b' : '#64748b'};">
+                    <td style="padding:4px 6px;color:${conforme === false ? '#991b1b' : '#64748b'};font-size:9.5px;">
                       ${motivo ? escapeHtml(motivo) : (conforme === true ? 'Conforme' : '-')}
                     </td>
                   </tr>
@@ -1494,67 +1698,75 @@ window.exportarPDF = async function() {
         </div>
       `).join('')}
 
-      <!-- Anexo Fotográfico de Evidências (Galeria Otimizada para PDF) -->
+      <!-- Anexo Fotográfico em Tabela de 2 Colunas -->
       ${fotosPdf.length > 0 ? `
-        <div style="margin-top:16px;page-break-inside:auto;">
-          <div style="background:#f1f5f9;padding:6px 10px;font-size:12px;font-weight:700;color:#0f172a;border-left:4px solid #007dc5;margin-bottom:10px;">
+        <div style="margin-top:14px;page-break-inside:auto;">
+          <div style="background:#f1f5f9;padding:6px 10px;font-size:11px;font-weight:700;color:#0f172a;border-left:4px solid #007dc5;margin-bottom:8px;">
             Anexo Fotográfico de Evidências Técnicas (${fotosPdf.length} foto(s))
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            ${fotosPdf.map(f => `
-              <div style="border:1px solid #cbd5e1;border-radius:6px;padding:6px;background:#ffffff;page-break-inside:avoid;display:flex;flex-direction:column;">
-                <div style="height:140px;width:100%;overflow:hidden;border-radius:4px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;margin-bottom:4px;">
-                  <img src="${f.src}" style="max-height:140px;max-width:100%;object-fit:contain;" alt="Foto">
-                </div>
-                <div style="font-size:9px;line-height:1.25;">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-                    <span style="font-weight:700;color:#007dc5;text-transform:uppercase;">${f.secao}</span>
-                    ${f.conforme === false ? 
-                      '<span style="background:#fee2e2;color:#991b1b;padding:1px 4px;border-radius:3px;font-weight:bold;">NÃO CONFORME</span>' : 
-                      (f.conforme === true ? 
-                        '<span style="background:#dcfce7;color:#166534;padding:1px 4px;border-radius:3px;font-weight:bold;">CONFORME</span>' : 
-                        '<span style="background:#e0f2fe;color:#0369a1;padding:1px 4px;border-radius:3px;font-weight:bold;">OBSERVAÇÃO</span>')}
-                  </div>
-                  <strong style="color:#0f172a;display:block;margin-bottom:2px;">${f.item}</strong>
-                  <span style="color:#475569;">${escapeHtml(f.motivo || 'Evidência fotográfica em conformidade')}</span>
-                </div>
-              </div>
+          <table style="width:100%;border-collapse:collapse;">
+            ${chunkArray(fotosPdf, 2).map(pair => `
+              <tr style="page-break-inside:avoid;">
+                ${pair.map(f => `
+                  <td style="width:50%;padding:4px;vertical-align:top;">
+                    <table style="width:100%;border:1px solid #cbd5e1;border-radius:6px;background:#ffffff;border-collapse:collapse;overflow:hidden;">
+                      <tr>
+                        <td style="padding:4px;background:#f8fafc;text-align:center;">
+                          <img src="${f.src}" style="max-height:130px;max-width:100%;height:130px;object-fit:contain;display:block;margin:0 auto;" alt="Foto Evidência">
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:6px;font-size:9px;line-height:1.3;border-top:1px solid #e2e8f0;">
+                          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                            <span style="font-weight:700;color:#007dc5;text-transform:uppercase;">${f.secao}</span>
+                            <span style="font-weight:bold;font-size:8px;padding:1px 4px;border-radius:3px;background:${f.conforme === false ? '#fee2e2' : (f.conforme === true ? '#dcfce7' : '#e0f2fe')};color:${f.conforme === false ? '#991b1b' : (f.conforme === true ? '#166534' : '#0369a1')};">
+                              ${f.conforme === false ? 'NÃO CONFORME' : (f.conforme === true ? 'CONFORME' : 'OBSERVAÇÃO')}
+                            </span>
+                          </div>
+                          <strong style="color:#0f172a;display:block;margin-bottom:1px;">${f.item}</strong>
+                          <span style="color:#475569;">${escapeHtml(f.motivo || 'Registro fotográfico técnico')}</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                `).join('')}
+                ${pair.length === 1 ? '<td style="width:50%;padding:4px;"></td>' : ''}
+              </tr>
             `).join('')}
-          </div>
+          </table>
         </div>
       ` : ''}
 
-      <!-- Observações Gerais -->
-      <div style="margin-top:12px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;page-break-inside:avoid;">
-        <strong style="color:#0f172a;display:block;margin-bottom:4px;">Observações Complementares:</strong>
+      <!-- Observações Complementares -->
+      <div style="margin-top:12px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:10.5px;page-break-inside:avoid;">
+        <strong style="color:#0f172a;display:block;margin-bottom:3px;">Observações Complementares:</strong>
         <p style="margin:0;color:#475569;white-space:pre-line;">${escapeHtml(report.observacoes || 'Sem observações adicionais.')}</p>
       </div>
 
-      <!-- Bloco de Assinatura -->
-      <div style="margin-top:20px;display:flex;justify-content:space-between;align-items:flex-end;padding-top:10px;border-top:1px solid #cbd5e1;page-break-inside:avoid;">
-        <div>
-          <p style="font-size:9px;color:#94a3b8;margin:0;">Relatório gerado via Sistema Checklist 3D Ar Condicionado</p>
-          <p style="font-size:9px;color:#94a3b8;margin:0;">ID Autenticação: ${report.id}</p>
-        </div>
-        <div style="text-align:center;">
-          ${report.assinatura ? `<img src="${report.assinatura}" style="height:44px;max-width:180px;object-fit:contain;margin-bottom:2px;">` : `<div style="height:44px;"></div>`}
-          <div style="border-top:1px solid #000;width:200px;margin:0 auto;padding-top:2px;font-size:10px;font-weight:bold;">
-            ${escapeHtml(report.inspetor)}
-          </div>
-          <span style="font-size:9px;color:#64748b;">Responsável pela Conferência</span>
-        </div>
-      </div>
+      <!-- Assinatura do Inspetor Responsável -->
+      <table style="width:100%;margin-top:18px;border-top:1px solid #cbd5e1;padding-top:10px;border-collapse:collapse;page-break-inside:avoid;">
+        <tr>
+          <td style="width:50%;vertical-align:bottom;">
+            <p style="font-size:8.5px;color:#94a3b8;margin:0;">Relatório gerado via Sistema Checklist 3D Ar Condicionado</p>
+            <p style="font-size:8.5px;color:#94a3b8;margin:2px 0 0 0;">ID Autenticação: ${report.id}</p>
+          </td>
+          <td style="width:50%;text-align:center;vertical-align:bottom;">
+            ${report.assinatura ? `<img src="${report.assinatura}" style="height:42px;max-width:180px;object-fit:contain;margin-bottom:2px;" alt="Assinatura">` : `<div style="height:42px;"></div>`}
+            <div style="border-top:1px solid #0f172a;width:190px;margin:0 auto;padding-top:2px;font-size:10px;font-weight:bold;color:#0f172a;">
+              ${escapeHtml(report.inspetor)}
+            </div>
+            <span style="font-size:8.5px;color:#64748b;">Responsável Técnico / Conferente</span>
+          </td>
+        </tr>
+      </table>
     </div>
   `;
-
-  document.body.appendChild(renderBox);
-  window.scrollTo(0, 0);
 
   try {
     if (document.fonts) {
       await document.fonts.ready;
     }
-    const imgs = renderBox.querySelectorAll('img');
+    const imgs = renderContent.querySelectorAll('img');
     await Promise.all(Array.from(imgs).map(img => {
       if (img.complete) return Promise.resolve();
       return new Promise(res => {
@@ -1563,41 +1775,38 @@ window.exportarPDF = async function() {
       });
     }));
 
-    await new Promise(r => setTimeout(r, 350));
+    await new Promise(r => setTimeout(r, 200));
 
     const cleanObra = (report.obra || 'Geral').replace(/[^a-zA-Z0-9]/g, '_');
     const opt = {
       margin: [8, 8, 8, 8],
       filename: `Relatorio_N_${report.numero}_${cleanObra}_3DAr.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
+      image: { type: 'jpeg', quality: 0.95 },
       html2canvas: {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
+        letterRendering: true,
         logging: false,
-        scrollY: 0,
         scrollX: 0,
-        windowWidth: 794
+        scrollY: 0
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['css', 'legacy'] }
     };
 
     if (typeof html2pdf !== 'undefined') {
-      await html2pdf().set(opt).from(renderBox).save();
+      await html2pdf().from(renderContent).set(opt).save();
       showToast("PDF com fotos gerado e baixado com sucesso!", "success");
     } else {
-      throw new Error("Biblioteca html2pdf não encontrada");
+      throw new Error("Biblioteca html2pdf não disponível");
     }
   } catch (err) {
     console.error("Falha ao gerar PDF via html2pdf:", err);
-    showToast("Abrindo prévia de impressão nativa...", "info");
+    showToast("Gerando PDF via impressão do navegador...", "info");
     window.print();
   } finally {
-    if (document.body.contains(renderBox)) {
-      document.body.removeChild(renderBox);
-    }
-    if (document.body.contains(overlay)) {
-      document.body.removeChild(overlay);
+    if (document.body.contains(renderWrapper)) {
+      document.body.removeChild(renderWrapper);
     }
   }
 };
@@ -1798,7 +2007,12 @@ function renderRightSidebar() {
         <div class="text-xs font-medium text-slate-700 truncate" title="${escapeHtml(report.obra)}">${escapeHtml(report.obra)}</div>
         <div class="flex items-center justify-between text-[11px] text-slate-400 mt-1">
           <span>${escapeHtml(report.inspetor)}</span>
-          <span>${report.dataHoraFormatada ? report.dataHoraFormatada.split(' ')[0] : ''}</span>
+          <div class="flex items-center space-x-2">
+            <span>${report.dataHoraFormatada ? report.dataHoraFormatada.split(' ')[0] : ''}</span>
+            <button type="button" onclick="event.stopPropagation(); excluirRelatorio('${report.id}');" class="text-slate-300 hover:text-rose-600 p-0.5 rounded transition-colors" title="Excluir Relatório">
+              <i class="fas fa-trash text-[10px]"></i>
+            </button>
+          </div>
         </div>
       </div>
     `;
