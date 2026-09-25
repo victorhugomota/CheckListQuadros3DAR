@@ -513,6 +513,12 @@ window.handleFotoUpload = async function(fieldKey, files) {
     }
   }
 
+  // Reseta os inputs de arquivo e câmera para permitir selecionar ou tirar outra foto consecutivamente
+  const fileInput = document.getElementById(`file-${fieldKey}`);
+  if (fileInput) fileInput.value = '';
+  const camInput = document.getElementById(`camera-${fieldKey}`);
+  if (camInput) camInput.value = '';
+
   renderFotosContainer(fieldKey);
   updateFormProgressCounters();
 };
@@ -751,13 +757,23 @@ function renderChecklistForm(existingData = null) {
 
         <!-- Seção de Anexo Fotográfico do Item -->
         <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 pl-5 sm:pl-7">
-          <div class="flex items-center space-x-2">
+          <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <!-- Opção 1: Abrir a Câmera diretamente -->
+            <input type="file" id="camera-${fieldKey}" accept="image/*" capture="environment" class="hidden" 
+              onchange="handleFotoUpload('${fieldKey}', this.files)">
+            <button type="button" onclick="document.getElementById('camera-${fieldKey}').click()" 
+              class="px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:text-[#007dc5] bg-white hover:bg-sky-50 border border-slate-200 hover:border-sky-300 rounded-md transition-colors flex items-center shadow-2xs" title="Tirar foto diretamente com a câmera">
+              <i class="fas fa-camera text-[#007dc5] mr-1"></i> Abrir Câmera
+            </button>
+
+            <!-- Opção 2: Adicionar dos arquivos do dispositivo / galeria -->
             <input type="file" id="file-${fieldKey}" accept="image/*" multiple class="hidden" 
               onchange="handleFotoUpload('${fieldKey}', this.files)">
             <button type="button" onclick="document.getElementById('file-${fieldKey}').click()" 
-              class="px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:text-[#007dc5] bg-white hover:bg-sky-50 border border-slate-200 hover:border-sky-300 rounded-md transition-colors flex items-center shadow-2xs">
-              <i class="fas fa-camera mr-1 text-[#007dc5]"></i> Anexar Foto
+              class="px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-md transition-colors flex items-center shadow-2xs" title="Selecionar foto(s) da galeria ou arquivos do dispositivo">
+              <i class="fas fa-folder-open text-amber-500 mr-1"></i> Arquivos
             </button>
+
             <span id="badge-foto-obrig-${fieldKey}" class="${ehNaoConforme ? 'inline-block' : 'hidden'} text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
               <i class="fas fa-asterisk text-[8px] mr-1 text-rose-500"></i> Foto Obrigatória (Não Conforme)
             </span>

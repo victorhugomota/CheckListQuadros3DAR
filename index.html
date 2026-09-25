@@ -317,11 +317,19 @@
                 <p class="text-xs text-slate-500">Campo opcional para escrever alguma observação e anexar fotos gerais</p>
               </div>
             </div>
-            <div>
+            <div class="flex items-center space-x-2">
+              <!-- Opção 1: Abrir a Câmera diretamente -->
+              <input type="file" id="camera-observacoes" accept="image/*" capture="environment" class="hidden" onchange="handleFotoUpload('observacoes', this.files)">
+              <button type="button" onclick="document.getElementById('camera-observacoes').click()" 
+                class="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-[#007dc5] bg-white hover:bg-sky-50 border border-slate-200 hover:border-sky-300 rounded-lg transition-colors flex items-center shadow-2xs" title="Tirar foto diretamente com a câmera do dispositivo">
+                <i class="fas fa-camera mr-1.5 text-[#007dc5]"></i> Abrir Câmera
+              </button>
+
+              <!-- Opção 2: Adicionar dos arquivos do dispositivo / galeria -->
               <input type="file" id="file-observacoes" accept="image/*" multiple class="hidden" onchange="handleFotoUpload('observacoes', this.files)">
               <button type="button" onclick="document.getElementById('file-observacoes').click()" 
-                class="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-[#007dc5] bg-slate-100 hover:bg-sky-50 border border-slate-200 hover:border-sky-300 rounded-lg transition-colors flex items-center shadow-2xs">
-                <i class="fas fa-camera mr-1.5 text-[#007dc5]"></i> Anexar Fotos
+                class="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-lg transition-colors flex items-center shadow-2xs" title="Selecionar foto(s) da galeria ou arquivos do dispositivo">
+                <i class="fas fa-folder-open mr-1.5 text-amber-500"></i> Arquivos
               </button>
             </div>
           </div>
