@@ -2,8 +2,9 @@
  * 3D AR CONDICIONADO - SISTEMA DE CHECKLIST DE QUADROS ELÉTRICOS
  * Aplicação inspirada no design Asana com suporte a Firebase Firestore,
  * histórico sequencial, menu lateral direito, exportação PDF e Excel,
- * assinatura digital, lista de obras salvas com autocomplete e lógica
- * invertida inteligente para itens de componentes danificados.
+ * assinatura digital, lista de obras salvas com autocomplete, lógica
+ * invertida inteligente para itens de componentes danificados,
+ * e registro fotográfico obrigatório para não-conformidades.
  */
 
 // ==========================================
@@ -121,6 +122,7 @@ const EQUIPE_RESPONSAVEIS = [
 const AppState = {
   reports: [],
   obras: [],
+  currentPhotos: {}, // { [fieldKey]: [dataUrl1, ...], 'observacoes': [dataUrl1, ...] }
   currentReport: null,
   isEditing: false,
   signaturePad: null,
@@ -179,7 +181,6 @@ async function initDataSync() {
 
   if (db) {
     try {
-      // Listener em tempo real para os relatórios
       db.collection("relatorios_quadros")
         .orderBy("numero", "desc")
         .onSnapshot((snapshot) => {
@@ -205,7 +206,6 @@ async function initDataSync() {
           updateSyncBadge('local');
         });
 
-      // Listener em tempo real para as obras cadastradas
       db.collection("obras_cadastradas")
         .onSnapshot((snapshot) => {
           snapshot.forEach(doc => {
@@ -249,7 +249,6 @@ function updateSyncBadge(status) {
 // ==========================================
 function refreshObrasList() {
   const set = new Set(AppState.obras);
-  // Coletar obras de todos os relatórios
   AppState.reports.forEach(r => {
     if (r.obra && r.obra.trim()) {
       set.add(r.obra.trim());
@@ -317,34 +316,153 @@ async function registrarNovaObra(nomeObra) {
 }
 
 // ==========================================
-// 6. LÓGICA DE ITENS "DANIFICADOS" (INVERTIDA)
+// 6. PROCESSAMENTO E COMPRESSÃO DE IMAGENS
 // ==========================================
 /**
- * Detecta se a pergunta é sobre componente danificado ou defeito.
- * Para estes itens:
- *   - SIM = "Sim, está danificado" -> NÃO CONFORME (abre campo para detalhar o dano)
- *   - NÃO = "Não está danificado" -> CONFORME (sem apontamentos / OK)
+ * Comprime e redimensiona imagem no lado do cliente utilizando Canvas HTML5.
+ * Reduz fotos pesadas de celulares (5-15MB) para arquivos nítidos e leves (~80-120KB).
  */
+function comprimirImagem(file, maxDimension = 1000, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) {
+      return reject(new Error("O arquivo selecionado não é uma imagem válida."));
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDimension) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          }
+        } else {
+          if (height > maxDimension) {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error("Falha ao carregar a imagem selecionada."));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+    reader.readAsDataURL(file);
+  });
+}
+
+window.handleFotoUpload = async function(fieldKey, files) {
+  if (!files || files.length === 0) return;
+
+  if (!AppState.currentPhotos[fieldKey]) {
+    AppState.currentPhotos[fieldKey] = [];
+  }
+
+  showToast("Otimizando imagem...", "info");
+
+  for (let i = 0; i < files.length; i++) {
+    try {
+      const compressedDataUrl = await comprimirImagem(files[i]);
+      AppState.currentPhotos[fieldKey].push(compressedDataUrl);
+    } catch (err) {
+      console.warn("Erro ao comprimir imagem:", err);
+      showToast("Erro ao processar imagem.", "error");
+    }
+  }
+
+  renderFotosContainer(fieldKey);
+  updateFormProgressCounters();
+};
+
+window.removerFoto = function(fieldKey, index) {
+  if (AppState.currentPhotos[fieldKey]) {
+    AppState.currentPhotos[fieldKey].splice(index, 1);
+    renderFotosContainer(fieldKey);
+    updateFormProgressCounters();
+  }
+};
+
+function renderFotosContainer(fieldKey) {
+  const container = document.getElementById(`fotos-container-${fieldKey}`);
+  const contadorInfo = document.getElementById(`fotos-info-${fieldKey}`);
+  if (!container) return;
+
+  const photos = AppState.currentPhotos[fieldKey] || [];
+
+  if (contadorInfo) {
+    contadorInfo.innerHTML = photos.length > 0 ? 
+      `<span class="text-emerald-700 font-semibold text-xs"><i class="fas fa-check-circle mr-1"></i>${photos.length} foto(s) anexada(s)</span>` : '';
+  }
+
+  if (photos.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="flex flex-wrap gap-2.5 mt-2.5 p-2 bg-slate-50/80 rounded-lg border border-slate-200">
+      ${photos.map((photo, idx) => `
+        <div class="relative group w-20 h-20 rounded-lg overflow-hidden border border-slate-300 shadow-xs bg-slate-200">
+          <img src="${photo}" class="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity" 
+            onclick="abrirFotoModal('${photo}')" alt="Foto Anexa" title="Clique para ampliar">
+          <button type="button" onclick="removerFoto('${fieldKey}', ${idx})" 
+            class="absolute top-1 right-1 bg-rose-600 hover:bg-rose-700 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-sm transition-transform active:scale-95" 
+            title="Remover foto">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+window.abrirFotoModal = function(src) {
+  const modal = document.getElementById('image-lightbox-modal');
+  const img = document.getElementById('image-lightbox-img');
+  if (modal && img) {
+    img.src = src;
+    modal.classList.remove('hidden');
+  }
+};
+
+window.fecharFotoModal = function() {
+  const modal = document.getElementById('image-lightbox-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+};
+
+// ==========================================
+// 7. LÓGICA DE ITENS "DANIFICADOS" (INVERTIDA)
+// ==========================================
 function isItemDanificado(itemText) {
   return /danific/i.test(itemText);
 }
 
-/**
- * Retorna se o item está em conformidade com base no texto e na resposta.
- * Retorna true (conforme), false (não conforme) ou null (não preenchido).
- */
 function isItemConforme(itemText, status) {
   if (!status) return null;
   const ehDanificado = isItemDanificado(itemText);
   if (ehDanificado) {
     return status === 'nao'; // NÃO está danificado => CONFORME!
   } else {
-    return status === 'sim'; // SIM está identificado/correto => CONFORME!
+    return status === 'sim'; // SIM está correto => CONFORME!
   }
 }
 
 // ==========================================
-// 7. CÁLCULO DE NÚMERO SEQUENCIAL PROGRESSIVO
+// 8. CÁLCULO DE NÚMERO SEQUENCIAL PROGRESSIVO
 // ==========================================
 function getNextReportNumber() {
   if (!AppState.reports || AppState.reports.length === 0) return 1;
@@ -354,19 +472,33 @@ function getNextReportNumber() {
 }
 
 // ==========================================
-// 8. RENDERIZAÇÃO DO FORMULÁRIO DE CHECKLIST
+// 9. RENDERIZAÇÃO DO FORMULÁRIO DE CHECKLIST
 // ==========================================
 function renderChecklistForm(existingData = null) {
   const container = document.getElementById('checklist-sections-container');
   if (!container) return;
 
   container.innerHTML = '';
+  AppState.currentPhotos = {};
+
+  // Se estiver editando, carregar fotos existentes
+  if (existingData) {
+    if (existingData.items) {
+      Object.keys(existingData.items).forEach(key => {
+        if (existingData.items[key] && existingData.items[key].fotos) {
+          AppState.currentPhotos[key] = [...existingData.items[key].fotos];
+        }
+      });
+    }
+    if (existingData.fotosObservacoes) {
+      AppState.currentPhotos['observacoes'] = [...existingData.fotosObservacoes];
+    }
+  }
 
   CHECKLIST_SECTIONS.forEach((section, sIdx) => {
     const sectionCard = document.createElement('div');
     sectionCard.className = 'bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6';
     
-    // Header da sessão com botão inteligente "Marcar Conforme"
     sectionCard.innerHTML = `
       <div class="px-6 py-4 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center space-x-3">
@@ -397,13 +529,13 @@ function renderChecklistForm(existingData = null) {
     section.items.forEach((itemText, iIdx) => {
       const fieldKey = `${section.id}_item_${iIdx}`;
       const savedItem = existingData && existingData.items ? existingData.items[fieldKey] : null;
-      const statusValue = savedItem ? savedItem.status : null; // 'sim', 'nao', ou null
+      const statusValue = savedItem ? savedItem.status : null;
       const motivoValue = savedItem ? savedItem.motivo || '' : '';
       
       const ehDanificado = isItemDanificado(itemText);
       const conforme = isItemConforme(itemText, statusValue);
+      const ehNaoConforme = conforme === false;
 
-      // Determinar classes visuais com base na conformidade
       let rowClass = 'hover:bg-slate-50/70';
       let motivoVisivel = false;
 
@@ -414,7 +546,6 @@ function renderChecklistForm(existingData = null) {
         motivoVisivel = true;
       }
 
-      // Configuração dos botões baseada na lógica invertida ou padrão
       let simCheckedClass = 'peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600';
       let simLabel = '<i class="fas fa-check text-[10px] mr-1"></i> SIM';
       
@@ -425,7 +556,6 @@ function renderChecklistForm(existingData = null) {
       let placeholderMotivo = 'Especifique detalhadamente a divergência ou ação necessária...';
 
       if (ehDanificado) {
-        // Lógica invertida: SIM significa danificado (defeito) e NÃO significa sem danos (conforme)
         simCheckedClass = 'peer-checked:bg-rose-600 peer-checked:text-white peer-checked:border-rose-600';
         simLabel = '<i class="fas fa-exclamation-triangle text-[10px] mr-1"></i> SIM (Danificado)';
         
@@ -487,25 +617,40 @@ function renderChecklistForm(existingData = null) {
               class="w-full text-xs text-slate-800 bg-slate-50/50 border border-slate-200 rounded-md p-2 focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition-all">${escapeHtml(motivoValue)}</textarea>
           </div>
         </div>
+
+        <!-- Seção de Anexo Fotográfico do Item -->
+        <div class="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 pl-5 sm:pl-7">
+          <div class="flex items-center space-x-2">
+            <input type="file" id="file-${fieldKey}" accept="image/*" multiple class="hidden" 
+              onchange="handleFotoUpload('${fieldKey}', this.files)">
+            <button type="button" onclick="document.getElementById('file-${fieldKey}').click()" 
+              class="px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:text-[#007dc5] bg-white hover:bg-sky-50 border border-slate-200 hover:border-sky-300 rounded-md transition-colors flex items-center shadow-2xs">
+              <i class="fas fa-camera mr-1 text-[#007dc5]"></i> Anexar Foto
+            </button>
+            <span id="badge-foto-obrig-${fieldKey}" class="${ehNaoConforme ? 'inline-block' : 'hidden'} text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
+              <i class="fas fa-asterisk text-[8px] mr-1 text-rose-500"></i> Foto Obrigatória (Não Conforme)
+            </span>
+          </div>
+          <div id="fotos-info-${fieldKey}"></div>
+        </div>
+        <div id="fotos-container-${fieldKey}" class="pl-5 sm:pl-7"></div>
       `;
 
       itemsContainer.appendChild(itemRow);
+      renderFotosContainer(fieldKey);
     });
   });
+
+  renderFotosContainer('observacoes');
 }
 
-// Manipulação da mudança de status (Sim / Não) considerando a lógica invertida de itens danificados
+// Manipulação da mudança de status (Sim / Não) com atualização dos badges de foto obrigatória
 window.handleStatusChange = function(fieldKey, value, ehDanificado) {
   const row = document.getElementById(`row-${fieldKey}`);
   const motivoContainer = document.getElementById(`motivo-container-${fieldKey}`);
   const motivoInput = document.getElementById(`motivo-${fieldKey}`);
+  const badgeFotoObrig = document.getElementById(`badge-foto-obrig-${fieldKey}`);
 
-  // Se for item Danificado:
-  // - value === 'sim' -> ESTÁ DANIFICADO (NÃO CONFORME) -> abrir campo
-  // - value === 'nao' -> NÃO ESTÁ DANIFICADO (CONFORME) -> ocultar campo
-  // Se for item normal:
-  // - value === 'nao' -> NÃO CONFORME -> abrir campo
-  // - value === 'sim' -> CONFORME -> ocultar campo
   const ehNaoConforme = ehDanificado ? (value === 'sim') : (value === 'nao');
 
   if (ehNaoConforme) {
@@ -519,6 +664,10 @@ window.handleStatusChange = function(fieldKey, value, ehDanificado) {
         setTimeout(() => motivoInput.focus(), 60);
       }
     }
+    if (badgeFotoObrig) {
+      badgeFotoObrig.classList.remove('hidden');
+      badgeFotoObrig.classList.add('inline-block');
+    }
   } else {
     if (row) {
       row.classList.remove('item-nao-ativo', 'hover:bg-slate-50/70');
@@ -527,12 +676,15 @@ window.handleStatusChange = function(fieldKey, value, ehDanificado) {
     if (motivoContainer) {
       motivoContainer.classList.add('hidden');
     }
+    if (badgeFotoObrig) {
+      badgeFotoObrig.classList.add('hidden');
+      badgeFotoObrig.classList.remove('inline-block');
+    }
   }
 
   updateFormProgressCounters();
 };
 
-// Marcar todos os itens da seção em conformidade de forma inteligente
 window.marcarTudoConforme = function(sectionId) {
   const section = CHECKLIST_SECTIONS.find(s => s.id === sectionId);
   if (!section) return;
@@ -540,7 +692,6 @@ window.marcarTudoConforme = function(sectionId) {
   section.items.forEach((itemText, idx) => {
     const key = `${sectionId}_item_${idx}`;
     const ehDanificado = isItemDanificado(itemText);
-    // Para danificado: Conforme é NÃO. Para normal: Conforme é SIM.
     const conformeValue = ehDanificado ? 'nao' : 'sim';
     const radio = document.getElementById(`${key}-${conformeValue}`);
     if (radio) {
@@ -586,7 +737,7 @@ function updateFormProgressCounters() {
 }
 
 // ==========================================
-// 9. ASSINATURA DIGITAL
+// 10. ASSINATURA DIGITAL
 // ==========================================
 function initSignaturePad() {
   const canvas = document.getElementById('signature-pad');
@@ -626,18 +777,18 @@ function initSignaturePad() {
 }
 
 // ==========================================
-// 10. CRIAÇÃO, EDIÇÃO E SALVAMENTO DE RELATÓRIO
+// 11. CRIAÇÃO, EDIÇÃO E SALVAMENTO DE RELATÓRIO
 // ==========================================
 window.novoRelatorio = function() {
   AppState.isEditing = false;
   AppState.currentReport = null;
+  AppState.currentPhotos = {};
 
   const nextNum = getNextReportNumber();
   document.getElementById('report-title-display').textContent = `Novo Relatório Nº ${nextNum}`;
   document.getElementById('form-report-number').value = nextNum;
   document.getElementById('form-report-id').value = 'rep_' + Date.now();
   
-  // Data e hora padrão atual no formato local
   const now = new Date();
   const tzOffset = now.getTimezoneOffset() * 60000;
   const localISOTime = (new Date(now - tzOffset)).toISOString().slice(0, 16);
@@ -696,7 +847,6 @@ window.salvarRelatorio = async function(andExportPdf = false) {
   const dataHoraIso = document.getElementById('form-report-date').value;
   const observacoes = document.getElementById('form-report-observacoes').value.trim();
 
-  // Validações essenciais
   if (!obra) {
     alert("Por favor, preencha ou selecione a Obra.");
     document.getElementById('form-report-obra').focus();
@@ -709,10 +859,71 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     return;
   }
 
-  // Registrar a obra salva para futuras escolhas
+  // ==========================================
+  // VALIDAÇÃO RIGOROSA DE ITENS NÃO CONFORMES
+  // (Exige descrição e foto obrigatória!)
+  // ==========================================
+  let erroValidacao = null;
+
+  for (const sec of CHECKLIST_SECTIONS) {
+    for (let idx = 0; idx < sec.items.length; idx++) {
+      const itemText = sec.items[idx];
+      const key = `${sec.id}_item_${idx}`;
+      const simRadio = document.getElementById(`${key}-sim`);
+      const naoRadio = document.getElementById(`${key}-nao`);
+      const motivoInput = document.getElementById(`motivo-${key}`);
+
+      let status = null;
+      if (simRadio && simRadio.checked) status = 'sim';
+      if (naoRadio && naoRadio.checked) status = 'nao';
+
+      if (status !== null) {
+        const conforme = isItemConforme(itemText, status);
+        if (conforme === false) {
+          const motivo = motivoInput ? motivoInput.value.trim() : '';
+          const fotosItem = AppState.currentPhotos[key] || [];
+
+          if (!motivo) {
+            erroValidacao = {
+              msg: `O item "${itemText}" está marcado como NÃO CONFORME e requer o preenchimento da justificativa.`,
+              key: key,
+              field: 'motivo'
+            };
+            break;
+          }
+
+          if (fotosItem.length === 0) {
+            erroValidacao = {
+              msg: `Atenção: O item "${itemText}" está marcado como NÃO CONFORME e é OBRIGATÓRIO anexar pelo menos uma foto comprobatória da avaria/irregularidade.`,
+              key: key,
+              field: 'foto'
+            };
+            break;
+          }
+        }
+      }
+    }
+    if (erroValidacao) break;
+  }
+
+  if (erroValidacao) {
+    alert(erroValidacao.msg);
+    const rowEl = document.getElementById(`row-${erroValidacao.key}`);
+    if (rowEl) {
+      rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      rowEl.classList.add('item-nao-ativo', 'animate-pulse');
+      setTimeout(() => rowEl.classList.remove('animate-pulse'), 3000);
+      if (erroValidacao.field === 'motivo') {
+        const motivoEl = document.getElementById(`motivo-${erroValidacao.key}`);
+        if (motivoEl) motivoEl.focus();
+      }
+    }
+    return;
+  }
+
   await registrarNovaObra(obra);
 
-  // Coleta dos itens do checklist com avaliação precisa de conformidade
+  // Coleta dos dados
   const items = {};
   let totalConformes = 0;
   let totalNaoConformes = 0;
@@ -733,6 +944,8 @@ window.salvarRelatorio = async function(andExportPdf = false) {
       if (simRadio && simRadio.checked) status = 'sim';
       if (naoRadio && naoRadio.checked) status = 'nao';
 
+      const fotosItem = AppState.currentPhotos[key] || [];
+
       if (status !== null) {
         const conforme = isItemConforme(itemText, status);
         motivo = motivoInput ? motivoInput.value.trim() : '';
@@ -744,7 +957,8 @@ window.salvarRelatorio = async function(andExportPdf = false) {
           pendencias.push({
             secao: sec.title,
             item: itemText,
-            motivo: motivo || (ehDanificado ? 'Componente apontado como danificado' : 'Não conformidade registrada')
+            motivo: motivo || (ehDanificado ? 'Componente apontado como danificado' : 'Não conformidade registrada'),
+            qtdFotos: fotosItem.length
           });
         }
       } else {
@@ -757,7 +971,8 @@ window.salvarRelatorio = async function(andExportPdf = false) {
         status: status,
         ehDanificado: ehDanificado,
         conforme: isItemConforme(itemText, status),
-        motivo: motivo
+        motivo: motivo,
+        fotos: fotosItem
       };
     });
   });
@@ -772,7 +987,6 @@ window.salvarRelatorio = async function(andExportPdf = false) {
 
   const totalRespondidos = totalConformes + totalNaoConformes;
 
-  // Objeto estruturado do Relatório
   const reportData = {
     id: id,
     numero: numero,
@@ -783,13 +997,14 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     dataHoraIso: dataHoraIso,
     dataHoraFormatada: formatarData(dataHoraIso),
     observacoes: observacoes,
+    fotosObservacoes: AppState.currentPhotos['observacoes'] || [],
     items: items,
     estatisticas: {
       totalItens: totalRespondidos + naoPreenchidos,
       totalConformes: totalConformes,
       totalNaoConformes: totalNaoConformes,
-      totalSim: totalConformes, // retrocompatibilidade
-      totalNao: totalNaoConformes, // retrocompatibilidade
+      totalSim: totalConformes,
+      totalNao: totalNaoConformes,
       naoPreenchidos: naoPreenchidos,
       percentualConformidade: totalRespondidos > 0 ? Math.round((totalConformes / totalRespondidos) * 100) : 0
     },
@@ -798,7 +1013,6 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     atualizadoEm: new Date().toISOString()
   };
 
-  // Salvar no Firebase Firestore e LocalStorage
   try {
     if (db) {
       await db.collection("relatorios_quadros").doc(id).set(reportData);
@@ -807,7 +1021,6 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     console.warn("Aviso ao salvar no Firestore (mantendo local):", err);
   }
 
-  // Atualiza lista local
   const index = AppState.reports.findIndex(r => r.id === id);
   if (index >= 0) {
     AppState.reports[index] = reportData;
@@ -850,7 +1063,7 @@ window.excluirRelatorio = async function(id) {
 };
 
 // ==========================================
-// 11. VISUALIZAÇÃO DETALHADA DO RELATÓRIO
+// 12. VISUALIZAÇÃO DETALHADA DO RELATÓRIO
 // ==========================================
 window.visualizarRelatorio = function(id) {
   const report = AppState.reports.find(r => r.id === id);
@@ -869,6 +1082,36 @@ function renderReportDetail(report) {
     report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
   const is100Conforme = totalNaoConformes === 0;
 
+  // Coletar todas as fotos anexadas ao relatório para a galeria
+  const todasFotos = [];
+  if (report.items) {
+    Object.keys(report.items).forEach(k => {
+      const it = report.items[k];
+      if (it.fotos && it.fotos.length > 0) {
+        it.fotos.forEach(foto => {
+          todasFotos.push({
+            src: foto,
+            item: it.item,
+            secao: it.secao,
+            conforme: it.conforme,
+            motivo: it.motivo || ''
+          });
+        });
+      }
+    });
+  }
+  if (report.fotosObservacoes && report.fotosObservacoes.length > 0) {
+    report.fotosObservacoes.forEach(foto => {
+      todasFotos.push({
+        src: foto,
+        item: 'Observações Gerais',
+        secao: 'Observações',
+        conforme: null,
+        motivo: report.observacoes || 'Registro fotográfico complementar'
+      });
+    });
+  }
+
   let sectionsHtml = '';
   CHECKLIST_SECTIONS.forEach(sec => {
     let itemsRows = '';
@@ -877,6 +1120,7 @@ function renderReportDetail(report) {
       const itemData = report.items ? report.items[key] : null;
       const status = itemData ? itemData.status : null;
       const motivo = itemData ? itemData.motivo : '';
+      const fotos = itemData ? itemData.fotos || [] : [];
       const ehDanificado = isItemDanificado(itemText);
       const conforme = isItemConforme(itemText, status);
 
@@ -896,8 +1140,11 @@ function renderReportDetail(report) {
       itemsRows += `
         <tr class="border-b border-slate-100 hover:bg-slate-50/50 ${conforme === false ? 'bg-rose-50/40' : ''}">
           <td class="py-2.5 px-4 text-xs font-medium text-slate-800">
-            ${itemText}
-            ${ehDanificado ? '<span class="text-[10px] text-slate-400 ml-1.5">(Item de Dano)</span>' : ''}
+            <div>${itemText}</div>
+            ${fotos.length > 0 ? 
+              `<span class="inline-flex items-center text-[10px] text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded mt-0.5 font-semibold">
+                <i class="fas fa-camera mr-1"></i> ${fotos.length} foto(s)
+              </span>` : ''}
           </td>
           <td class="py-2.5 px-4 text-center shrink-0">
             ${badgeStatus}
@@ -1014,6 +1261,45 @@ function renderReportDetail(report) {
     <!-- Seções de Itens -->
     ${sectionsHtml}
 
+    <!-- Galeria de Registro Fotográfico de Evidências -->
+    ${todasFotos.length > 0 ? `
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-2">
+            <i class="fas fa-camera text-[#007dc5]"></i>
+            <h4 class="font-bold text-base text-slate-800">Registro Fotográfico de Evidências</h4>
+          </div>
+          <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-100 text-[#007dc5]">${todasFotos.length} foto(s) anexada(s)</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          ${todasFotos.map(f => `
+            <div class="border border-slate-200 rounded-lg overflow-hidden bg-slate-50 flex flex-col shadow-xs">
+              <div class="h-44 w-full bg-slate-200 overflow-hidden relative group cursor-pointer" onclick="abrirFotoModal('${f.src}')">
+                <img src="${f.src}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" alt="Foto Evidência">
+                <div class="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold">
+                  <i class="fas fa-search-plus mr-1"></i> Ampliar Foto
+                </div>
+              </div>
+              <div class="p-3 flex-1 flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="text-[10px] font-semibold text-slate-500 uppercase">${f.secao}</span>
+                    ${f.conforme === false ? 
+                      '<span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-100 text-rose-700">NÃO CONFORME</span>' : 
+                      (f.conforme === true ? 
+                        '<span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-700">CONFORME</span>' : 
+                        '<span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-sky-100 text-sky-700">OBSERVAÇÃO</span>')}
+                  </div>
+                  <p class="text-xs font-bold text-slate-800 line-clamp-1 mb-1">${f.item}</p>
+                  <p class="text-xs text-slate-600 line-clamp-2">${f.motivo || 'Registro fotográfico técnico'}</p>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : ''}
+
     <!-- Observações Gerais -->
     <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
       <h4 class="font-semibold text-sm text-slate-800 mb-2 flex items-center">
@@ -1046,7 +1332,7 @@ function renderReportDetail(report) {
 }
 
 // ==========================================
-// 12. EXPORTAÇÃO PDF E EXCEL
+// 13. EXPORTAÇÃO PDF E EXCEL COM FOTOS
 // ==========================================
 let cachedLogoSvgDataUrl = '';
 
@@ -1072,9 +1358,8 @@ window.exportarPDF = async function() {
     return;
   }
 
-  showToast("Gerando PDF, aguarde alguns instantes...", "info");
+  showToast("Gerando PDF com registros fotográficos...", "info");
 
-  // Criar tela de carregamento visual
   const overlay = document.createElement('div');
   overlay.id = 'pdf-loading-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:99998;display:flex;align-items:center;justify-content:center;color:#fff;';
@@ -1082,12 +1367,11 @@ window.exportarPDF = async function() {
     <div style="background:#fff;color:#1e293b;padding:24px 32px;border-radius:12px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.3);text-align:center;max-width:360px;">
       <i class="fas fa-circle-notch fa-spin text-3xl text-[#007dc5]" style="margin-bottom:12px;"></i>
       <h4 style="font-weight:700;font-size:15px;margin:0 0 4px 0;">Gerando Relatório em PDF</h4>
-      <p style="font-size:12px;color:#64748b;margin:0;">Renderizando tabelas e assinaturas técnicas...</p>
+      <p style="font-size:12px;color:#64748b;margin:0;">Otimizando evidências fotográficas e assinaturas...</p>
     </div>
   `;
   document.body.appendChild(overlay);
 
-  // Criar container DOM com layout A4 (794px = 210mm a 96dpi)
   const renderBox = document.createElement('div');
   renderBox.id = 'pdf-render-box';
   renderBox.style.cssText = 'position:absolute;top:0;left:0;width:794px;background:#ffffff;color:#1e293b;z-index:99999;padding:24px;box-sizing:border-box;font-family:\'Inter\',sans-serif;';
@@ -1096,6 +1380,36 @@ window.exportarPDF = async function() {
     report.estatisticas.totalNaoConformes : report.estatisticas.totalNao;
 
   const logoSrc = cachedLogoSvgDataUrl || 'logo 3d.svg';
+
+  // Coleta de fotos para o anexo fotográfico do PDF
+  const fotosPdf = [];
+  if (report.items) {
+    Object.keys(report.items).forEach(k => {
+      const it = report.items[k];
+      if (it.fotos && it.fotos.length > 0) {
+        it.fotos.forEach(foto => {
+          fotosPdf.push({
+            src: foto,
+            item: it.item,
+            secao: it.secao,
+            conforme: it.conforme,
+            motivo: it.motivo || ''
+          });
+        });
+      }
+    });
+  }
+  if (report.fotosObservacoes && report.fotosObservacoes.length > 0) {
+    report.fotosObservacoes.forEach(foto => {
+      fotosPdf.push({
+        src: foto,
+        item: 'Observações Gerais',
+        secao: 'Observações',
+        conforme: null,
+        motivo: report.observacoes || 'Registro complementar'
+      });
+    });
+  }
 
   renderBox.innerHTML = `
     <div style="font-family:'Inter',sans-serif;color:#1e293b;background:#ffffff;">
@@ -1133,7 +1447,7 @@ window.exportarPDF = async function() {
               <tr style="background:#f8fafc;border-bottom:1px solid #cbd5e1;text-align:left;">
                 <th style="padding:5px;width:45%;">Item de Conferência</th>
                 <th style="padding:5px;width:18%;text-align:center;">Status</th>
-                <th style="padding:5px;width:37%;">Apontamento / O que foi danificado</th>
+                <th style="padding:5px;width:37%;">Apontamento / Não Cumprimento</th>
               </tr>
             </thead>
             <tbody>
@@ -1142,6 +1456,7 @@ window.exportarPDF = async function() {
                 const item = report.items ? report.items[key] : null;
                 const status = item ? item.status : null;
                 const motivo = item ? item.motivo : '';
+                const fotos = item ? item.fotos || [] : [];
                 const ehDanificado = isItemDanificado(itemText);
                 const conforme = isItemConforme(itemText, status);
 
@@ -1162,6 +1477,8 @@ window.exportarPDF = async function() {
                   <tr style="border-bottom:1px solid #e2e8f0;background:${conforme === false ? '#fef2f2' : 'transparent'};page-break-inside:avoid;">
                     <td style="padding:4px 5px;font-weight:${conforme === false ? '600' : 'normal'};color:${conforme === false ? '#991b1b' : '#334155'};">
                       ${itemText}
+                      ${fotos.length > 0 ? 
+                        `<span style="display:inline-block;padding:1px 4px;font-size:8px;background:#e0f2fe;color:#0369a1;border-radius:3px;margin-left:4px;font-weight:bold;">📷 ${fotos.length} foto(s)</span>` : ''}
                     </td>
                     <td style="padding:4px 5px;text-align:center;font-weight:bold;color:${statusColor};">
                       ${statusLabel}
@@ -1176,6 +1493,36 @@ window.exportarPDF = async function() {
           </table>
         </div>
       `).join('')}
+
+      <!-- Anexo Fotográfico de Evidências (Galeria Otimizada para PDF) -->
+      ${fotosPdf.length > 0 ? `
+        <div style="margin-top:16px;page-break-inside:auto;">
+          <div style="background:#f1f5f9;padding:6px 10px;font-size:12px;font-weight:700;color:#0f172a;border-left:4px solid #007dc5;margin-bottom:10px;">
+            Anexo Fotográfico de Evidências Técnicas (${fotosPdf.length} foto(s))
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            ${fotosPdf.map(f => `
+              <div style="border:1px solid #cbd5e1;border-radius:6px;padding:6px;background:#ffffff;page-break-inside:avoid;display:flex;flex-direction:column;">
+                <div style="height:140px;width:100%;overflow:hidden;border-radius:4px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;margin-bottom:4px;">
+                  <img src="${f.src}" style="max-height:140px;max-width:100%;object-fit:contain;" alt="Foto">
+                </div>
+                <div style="font-size:9px;line-height:1.25;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                    <span style="font-weight:700;color:#007dc5;text-transform:uppercase;">${f.secao}</span>
+                    ${f.conforme === false ? 
+                      '<span style="background:#fee2e2;color:#991b1b;padding:1px 4px;border-radius:3px;font-weight:bold;">NÃO CONFORME</span>' : 
+                      (f.conforme === true ? 
+                        '<span style="background:#dcfce7;color:#166534;padding:1px 4px;border-radius:3px;font-weight:bold;">CONFORME</span>' : 
+                        '<span style="background:#e0f2fe;color:#0369a1;padding:1px 4px;border-radius:3px;font-weight:bold;">OBSERVAÇÃO</span>')}
+                  </div>
+                  <strong style="color:#0f172a;display:block;margin-bottom:2px;">${f.item}</strong>
+                  <span style="color:#475569;">${escapeHtml(f.motivo || 'Evidência fotográfica em conformidade')}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
 
       <!-- Observações Gerais -->
       <div style="margin-top:12px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;page-break-inside:avoid;">
@@ -1204,7 +1551,6 @@ window.exportarPDF = async function() {
   window.scrollTo(0, 0);
 
   try {
-    // Aguardar fontes e imagens decodificarem
     if (document.fonts) {
       await document.fonts.ready;
     }
@@ -1238,7 +1584,7 @@ window.exportarPDF = async function() {
 
     if (typeof html2pdf !== 'undefined') {
       await html2pdf().set(opt).from(renderBox).save();
-      showToast("PDF gerado e baixado com sucesso!", "success");
+      showToast("PDF com fotos gerado e baixado com sucesso!", "success");
     } else {
       throw new Error("Biblioteca html2pdf não encontrada");
     }
@@ -1255,7 +1601,6 @@ window.exportarPDF = async function() {
     }
   }
 };
-
 
 window.exportarExcel = function() {
   const report = AppState.currentReport;
@@ -1283,7 +1628,7 @@ window.exportarExcel = function() {
   rows.push([]);
 
   // Cabeçalho da tabela de itens
-  rows.push(["Sessão", "Item de Conferência", "Status", "Conformidade", "O que foi danificado / Não Cumprimento"]);
+  rows.push(["Sessão", "Item de Conferência", "Status", "Conformidade", "O que foi danificado / Não Cumprimento", "Qtd Fotos Anexadas"]);
 
   CHECKLIST_SECTIONS.forEach(sec => {
     sec.items.forEach((itemText, idx) => {
@@ -1292,6 +1637,7 @@ window.exportarExcel = function() {
       const status = item ? item.status : null;
       const ehDanificado = isItemDanificado(itemText);
       const conforme = isItemConforme(itemText, status);
+      const qtdFotos = item && item.fotos ? item.fotos.length : 0;
 
       let statusDisplay = '-';
       if (status !== null) {
@@ -1305,12 +1651,13 @@ window.exportarExcel = function() {
       const conformidadeDisplay = conforme === true ? 'CONFORME' : (conforme === false ? 'NÃO CONFORME' : '-');
       const motivo = item ? item.motivo || '' : '';
 
-      rows.push([sec.title, itemText, statusDisplay, conformidadeDisplay, motivo]);
+      rows.push([sec.title, itemText, statusDisplay, conformidadeDisplay, motivo, qtdFotos > 0 ? `${qtdFotos} foto(s)` : '0']);
     });
   });
 
   rows.push([]);
   rows.push(["Observações Complementares:", report.observacoes || "Nenhuma"]);
+  rows.push(["Fotos das Observações:", report.fotosObservacoes ? `${report.fotosObservacoes.length} foto(s)` : "0"]);
   rows.push(["Assinatura do Inspetor:", report.inspetor]);
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -1322,7 +1669,8 @@ window.exportarExcel = function() {
     { wch: 45 },
     { wch: 18 },
     { wch: 16 },
-    { wch: 50 }
+    { wch: 50 },
+    { wch: 18 }
   ];
 
   XLSX.writeFile(wb, `Relatorio_N_${report.numero}_${report.obra.replace(/[^a-zA-Z0-9]/g, '_')}_3DAr.xlsx`);
@@ -1330,7 +1678,7 @@ window.exportarExcel = function() {
 };
 
 // ==========================================
-// 13. DASHBOARD E MENU LATERAL DIREITO (ASANA STYLE)
+// 14. DASHBOARD E MENU LATERAL DIREITO (ASANA STYLE)
 // ==========================================
 function renderDashboard() {
   const container = document.getElementById('dashboard-reports-grid');
@@ -1343,7 +1691,6 @@ function renderDashboard() {
 
   if (countBadge) countBadge.textContent = `${AppState.reports.length} relatórios gerados`;
 
-  // Atualizar métricas do dashboard
   const metricTotal = document.getElementById('metric-total-relatorios');
   const metricNaoConformidades = document.getElementById('metric-total-nao');
   const metricUltima = document.getElementById('metric-ultima-data');
@@ -1417,7 +1764,6 @@ function renderDashboard() {
   }).join('');
 }
 
-// Renderizar o Menu Lateral Direito (Sidebar no padrão Asana)
 function renderRightSidebar() {
   const sidebarList = document.getElementById('sidebar-reports-list');
   const countElement = document.getElementById('sidebar-count-badge');
@@ -1477,7 +1823,7 @@ function renderAllViews() {
 }
 
 // ==========================================
-// 14. NAVEGAÇÃO DE TELAS (VIEW SWITCHER)
+// 15. NAVEGAÇÃO DE TELAS (VIEW SWITCHER)
 // ==========================================
 window.switchView = function(viewName) {
   AppState.currentView = viewName;
@@ -1504,7 +1850,7 @@ window.switchView = function(viewName) {
 };
 
 // ==========================================
-// 15. UTILITÁRIOS
+// 16. UTILITÁRIOS
 // ==========================================
 function escapeHtml(str) {
   if (!str) return '';
@@ -1556,7 +1902,6 @@ function showToast(message, type = 'info') {
   }, 3500);
 }
 
-// Alternar menu lateral em telas menores (drawer)
 window.toggleSidebar = function() {
   const sidebar = document.getElementById('right-sidebar');
   const backdrop = document.getElementById('sidebar-backdrop');
@@ -1568,17 +1913,15 @@ window.toggleSidebar = function() {
   }
 };
 
-// Busca global
 window.handleSearch = function(query) {
   AppState.searchQuery = query;
   renderAllViews();
 };
 
 // ==========================================
-// 16. INICIALIZAÇÃO NO DOM READY
+// 17. INICIALIZAÇÃO NO DOM READY
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
-  // Preencher Select de Inspetores
   const inspectorSelect = document.getElementById('form-report-inspector');
   if (inspectorSelect) {
     EQUIPE_RESPONSAVEIS.forEach(nome => {
@@ -1589,22 +1932,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Listener da busca global
   const searchInput = document.getElementById('global-search-input');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => handleSearch(e.target.value));
   }
 
-  // Listener da busca na sidebar
   const sidebarSearchInput = document.getElementById('sidebar-search-input');
   if (sidebarSearchInput) {
     sidebarSearchInput.addEventListener('input', (e) => handleSearch(e.target.value));
   }
 
-  // Pré-carregar logo oficial para geração de PDF
   preloadLogo();
-
-  // Iniciar sincronização e interface
   initDataSync();
 });
-

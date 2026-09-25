@@ -305,20 +305,33 @@
           <!-- Renderizado dinamicamente via app.js -->
         </div>
 
-        <!-- Seção de Observações Gerais -->
+        <!-- Seção de Observações Gerais com Upload de Fotos -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <div class="flex items-center space-x-3 mb-3">
-            <div class="w-8 h-8 rounded-lg bg-sky-100 text-[#007dc5] flex items-center justify-center font-bold">
-              <i class="fas fa-comment-alt"></i>
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div class="flex items-center space-x-3">
+              <div class="w-8 h-8 rounded-lg bg-sky-100 text-[#007dc5] flex items-center justify-center font-bold">
+                <i class="fas fa-comment-alt"></i>
+              </div>
+              <div>
+                <h3 class="text-base font-semibold text-slate-800">Observações Gerais</h3>
+                <p class="text-xs text-slate-500">Campo opcional para escrever alguma observação e anexar fotos gerais</p>
+              </div>
             </div>
             <div>
-              <h3 class="text-base font-semibold text-slate-800">Observações Gerais</h3>
-              <p class="text-xs text-slate-500">Campo opcional para escrever alguma observação que não esteja no checklist</p>
+              <input type="file" id="file-observacoes" accept="image/*" multiple class="hidden" onchange="handleFotoUpload('observacoes', this.files)">
+              <button type="button" onclick="document.getElementById('file-observacoes').click()" 
+                class="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-[#007dc5] bg-slate-100 hover:bg-sky-50 border border-slate-200 hover:border-sky-300 rounded-lg transition-colors flex items-center shadow-2xs">
+                <i class="fas fa-camera mr-1.5 text-[#007dc5]"></i> Anexar Fotos
+              </button>
             </div>
           </div>
           <textarea id="form-report-observacoes" rows="3" placeholder="Digite aqui quaisquer detalhes técnicos, observações de segurança ou recomendações..." 
-            class="w-full text-xs text-slate-800 bg-slate-50/50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-[#007dc5] focus:border-[#007dc5] outline-none transition-all"></textarea>
+            class="w-full text-xs text-slate-800 bg-slate-50/50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-[#007dc5] focus:border-[#007dc5] outline-none transition-all mb-2"></textarea>
+          
+          <!-- Container de fotos anexadas às Observações -->
+          <div id="fotos-container-observacoes"></div>
         </div>
+
 
         <!-- Seção de Assinatura Digital do Inspetor -->
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
@@ -435,10 +448,18 @@
   </div>
 
 
-  <!-- Container de Toasts de Notificação -->
-  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+  <!-- Modal de Visualização Ampliada de Imagens -->
+  <div id="image-lightbox-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden" onclick="fecharFotoModal()">
+    <div class="relative max-w-4xl max-h-[90vh] bg-white rounded-xl overflow-hidden shadow-2xl p-2" onclick="event.stopPropagation()">
+      <button onclick="fecharFotoModal()" class="absolute top-3 right-3 bg-slate-800/80 hover:bg-slate-900 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm shadow-md transition-all">
+        <i class="fas fa-times"></i>
+      </button>
+      <img id="image-lightbox-img" src="" class="max-h-[80vh] w-auto mx-auto object-contain rounded-lg" alt="Foto Ampliada">
+    </div>
+  </div>
 
   <!-- Script Principal da Aplicação -->
   <script src="app.js"></script>
+
 </body>
 </html>
