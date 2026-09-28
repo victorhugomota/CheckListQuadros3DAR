@@ -39,13 +39,15 @@ body {
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
 }
 
-/* Efeito do item do checklist quando 'Não' é marcado */
-.item-nao-ativo {
+/* Efeito do item do checklist quando Conforme ou Não Conforme é marcado */
+.item-nao-ativo,
+.item-naoconforme-ativo {
   border-color: #fca5a5 !important;
   background-color: #fef2f2 !important;
 }
 
-.item-sim-ativo {
+.item-sim-ativo,
+.item-conforme-ativo {
   border-color: #86efac !important;
   background-color: #f0fdf4 !important;
 }

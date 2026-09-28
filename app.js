@@ -50,18 +50,54 @@ const CHECKLIST_SECTIONS = [
     icon: "fa-door-closed",
     description: "Verificação da estrutura externa, fixação, identificação e integridade da tampa do painel.",
     items: [
-      "Identificação do Quadro Elétrico?",
-      "Identificação das Lampadas?",
-      "Identificação das Seccionadoras?",
-      "Componentes Presos Corretamente?",
-      "Danificação na Tampa?",
-      "Fechaduras Em Bom Estado?",
-      "IHM Danificada?",
-      "Tampa Aterrada?",
-      "Venezianas Instaladas Corretamente?",
-      "Ventilador e Exaustor Instaladas Corretamente?",
-      "Venezianas Danificadas?",
-      "Ventilador e Exaustor Danificados?"
+      {
+        titulo: "Identificação do Quadro Elétrico",
+        criterio: "Tag, plaqueta de identificação e aviso de risco elétrico na face externa."
+      },
+      {
+        titulo: "Identificação das Lâmpadas / Sinaleiros",
+        criterio: "Identificação legível de cada sinaleiro (ex: Ligado, Falha, Operação)."
+      },
+      {
+        titulo: "Identificação das Chaves Seccionadoras",
+        criterio: "Posições Lig/Desl e identificação do circuito na manopla externa."
+      },
+      {
+        titulo: "Fixação dos Componentes da Tampa",
+        criterio: "Fixação mecânica firme de botões, sinaleiros, comutadoras e IHM."
+      },
+      {
+        titulo: "Integridade da Tampa e Pintura",
+        criterio: "Ausência de riscos, amassados, oxidação ou danos na lataria e fechamento."
+      },
+      {
+        titulo: "Estado das Fechaduras do Quadro Elétrico",
+        criterio: "Fechaduras travando perfeitamente com chave e vedação adequada."
+      },
+      {
+        titulo: "Integridade e Funcionamento da IHM",
+        criterio: "Tela sem trincas, display funcional e membrana em perfeito estado."
+      },
+      {
+        titulo: "Aterramento da Tampa",
+        criterio: "Cordoalha de aterramento interligando a tampa à estrutura aterrada."
+      },
+      {
+        titulo: "Instalação das Venezianas de Ventilação",
+        criterio: "Venezianas alinhadas, fixadas e com filtro de ar limpo/presente."
+      },
+      {
+        titulo: "Instalação do Ventilador e Exaustor",
+        criterio: "Sentido de fluxo correto (insuflamento/exaustão) e fixação firme."
+      },
+      {
+        titulo: "Integridade das Venezianas",
+        criterio: "Ausência de aletas quebradas, deformadas ou obstruídas."
+      },
+      {
+        titulo: "Integridade do Ventilador e Exaustor",
+        criterio: "Hélices livres, motores sem ruídos anormais e grades protetoras intactas."
+      }
     ]
   },
   {
@@ -70,23 +106,74 @@ const CHECKLIST_SECTIONS = [
     icon: "fa-microchip",
     description: "Inspeção dos componentes elétricos, disjuntores, bornes, relés e barramentos.",
     items: [
-      "Miolo Interno Danificado?",
-      "Canaletas Danificadas?",
-      "Tampas de Canaletas Danificadas?",
-      "Tampas de Canaletas Completas?",
-      "Projeto Elétrico Presente no Quadro?",
-      "Disjuntores Danificados?",
-      "Contatoras Danificadas?",
-      "Inversores Danificados?",
-      "Conversores de Potência Danificados?",
-      "Relés Danificados?",
-      "Bornes Danificados?",
-      "Fontes Danificadas?",
-      "Componentes Identificados?",
-      "Identificador de Borne Faltando?",
-      "Painél Esta Aterrado?",
-      "Reaperto e Fixação Conferidos?",
-      "Iluminação Interna Danificada?"
+      {
+        titulo: "Integridade da Placa de Montagem (Miolo)",
+        criterio: "Placa de montagem sem deformações, trincas ou pontos de oxidação."
+      },
+      {
+        titulo: "Integridade das Canaletas Plásticas",
+        criterio: "Canaletas sem aletas quebradas, trincadas ou ressecadas."
+      },
+      {
+        titulo: "Integridade das Tampas de Canaletas",
+        criterio: "Tampas sem trincas, empenamentos ou danos físicos."
+      },
+      {
+        titulo: "Tampas de Canaletas Completas e Encaixadas",
+        criterio: "Todas as tampas instaladas, cobrindo 100% da fiação interna."
+      },
+      {
+        titulo: "Diagrama / Projeto Elétrico no Porta-Documentos",
+        criterio: "Cópia atualizada do esquema unifilar/funcional presente no quadro."
+      },
+      {
+        titulo: "Integridade dos Disjuntores",
+        criterio: "Disjuntores em bom estado mecânico, sem avarias ou sinais de queima."
+      },
+      {
+        titulo: "Integridade das Contatoras",
+        criterio: "Contatoras sem danos físicos, polos e bobinas em perfeito estado."
+      },
+      {
+        titulo: "Integridade dos Inversores de Frequência",
+        criterio: "Conexões firmes, carcaça sem danos e display operacional."
+      },
+      {
+        titulo: "Integridade dos Conversores de Potência",
+        criterio: "Módulos sem danos visíveis, superaquecimento ou falha de fixação."
+      },
+      {
+        titulo: "Integridade dos Relés (Auxiliares e Térmicos)",
+        criterio: "Bases e soquetes firmes, contatos sem fuligem e carcaças intactas."
+      },
+      {
+        titulo: "Integridade dos Bornes / Régua de Bornes",
+        criterio: "Bornes sem trincas, deformações térmicas ou travamento frouxo."
+      },
+      {
+        titulo: "Integridade das Fontes de Alimentação (24Vcc)",
+        criterio: "Tensão nominal estável, sem estufamento ou danos nos bornes."
+      },
+      {
+        titulo: "Identificação de Todos os Componentes",
+        criterio: "Etiquetas com identificação técnica (TAGs) conforme diagrama."
+      },
+      {
+        titulo: "Identificação Completa dos Bornes",
+        criterio: "Marcadores numéricos/alfanuméricos presentes em toda a régua."
+      },
+      {
+        titulo: "Aterramento Geral da Carcaça e Placa",
+        criterio: "Barramento de proteção (PE) aterrado e continuidade garantida."
+      },
+      {
+        titulo: "Reaperto e Torque dos Componentes",
+        criterio: "Parafusos de fixação e trilhos DIN conferidos com torque adequado."
+      },
+      {
+        titulo: "Integridade e Operação da Iluminação Interna",
+        criterio: "Luminária interna e interruptor fim-de-curso operando corretamente."
+      }
     ]
   },
   {
@@ -95,14 +182,38 @@ const CHECKLIST_SECTIONS = [
     icon: "fa-network-wired",
     description: "Avaliação do roteamento dos condutores, isolamento, identificação e aperto dos terminais.",
     items: [
-      "Reaperto dos Cabos Conferidos?",
-      "Cabo de Potêcia Identificados?",
-      "Cabo de Comando Identificados?",
-      "Cabo de Rede Identificado?",
-      "Cabos Danificados?",
-      "Cabo Sem Isolamento?",
-      "Cabo Com Cores Fora do Padrão?",
-      "Terminais Faltando?"
+      {
+        titulo: "Torque e Reaperto das Conexões dos Cabos",
+        criterio: "Conexões elétricas reapertadas (potência, neutro e comando)."
+      },
+      {
+        titulo: "Identificação dos Cabos de Potência",
+        criterio: "Anilhas com marcação de fase/circuito nas duas extremidades."
+      },
+      {
+        titulo: "Identificação dos Cabos de Comando",
+        criterio: "Anilhas numeradas de comando batendo com o esquema elétrico."
+      },
+      {
+        titulo: "Identificação dos Cabos de Rede / Comunicação",
+        criterio: "Cabos de comunicação/Ethernet identificados e organizados."
+      },
+      {
+        titulo: "Integridade da Isolação e Vias dos Cabos",
+        criterio: "Cabos sem esmagamento, cortes, quebras ou danos térmicos."
+      },
+      {
+        titulo: "Isolamento Completo dos Condutores",
+        criterio: "Ausência de partes vivas desnudas ou fiação desencapada exposta."
+      },
+      {
+        titulo: "Padronização das Cores dos Cabos (Norma)",
+        criterio: "Fases, Neutro (Azul Claro) e Terra (Verde/Amarelo) padronizados."
+      },
+      {
+        titulo: "Terminais Crimpados em Todas as Pontas",
+        criterio: "Uso de ilhós/terminais apropriados em 100% dos cabos flexíveis."
+      }
     ]
   }
 ];
@@ -582,19 +693,36 @@ window.fecharFotoModal = function() {
 };
 
 // ==========================================
-// 7. LÓGICA DE ITENS "DANIFICADOS" (INVERTIDA)
+// 7. LÓGICA DE AVALIAÇÃO DE CONFORMIDADE E CRITÉRIOS
 // ==========================================
+function getItemTitle(itemObj) {
+  if (!itemObj) return '';
+  if (typeof itemObj === 'string') return itemObj;
+  return itemObj.titulo || itemObj.item || '';
+}
+
+function getItemCriterio(itemObj) {
+  if (!itemObj || typeof itemObj === 'string') return '';
+  return itemObj.criterio || '';
+}
+
 function isItemDanificado(itemText) {
-  return /danific/i.test(itemText);
+  if (!itemText) return false;
+  return /danific/i.test(itemText) || /sem isolamento/i.test(itemText) || /fora do padr/i.test(itemText) || /faltando/i.test(itemText);
 }
 
 function isItemConforme(itemText, status) {
-  if (!status) return null;
+  if (status === null || status === undefined || status === '') return null;
+  // Padrão unificado
+  if (status === 'conforme') return true;
+  if (status === 'nao_conforme') return false;
+
+  // Compatibilidade com relatórios legados gravados como 'sim' e 'nao'
   const ehDanificado = isItemDanificado(itemText);
   if (ehDanificado) {
-    return status === 'nao'; // NÃO está danificado => CONFORME!
+    return status === 'nao'; // Não está danificado / não falta => CONFORME!
   } else {
-    return status === 'sim'; // SIM está correto => CONFORME!
+    return status === 'sim'; // Sim está correto => CONFORME!
   }
 }
 
@@ -663,44 +791,38 @@ function renderChecklistForm(existingData = null) {
 
     const itemsContainer = sectionCard.querySelector(`#section-items-${section.id}`);
 
-    section.items.forEach((itemText, iIdx) => {
+    section.items.forEach((itemObj, iIdx) => {
+      const itemTitle = getItemTitle(itemObj);
+      const itemCriterio = getItemCriterio(itemObj);
       const fieldKey = `${section.id}_item_${iIdx}`;
       const savedItem = existingData && existingData.items ? existingData.items[fieldKey] : null;
       const statusValue = savedItem ? savedItem.status : null;
       const motivoValue = savedItem ? savedItem.motivo || '' : '';
       
-      const ehDanificado = isItemDanificado(itemText);
-      const conforme = isItemConforme(itemText, statusValue);
-      const ehNaoConforme = conforme === false;
+      // Avaliação de conformidade com compatibilidade retroativa
+      let isConformeChecked = false;
+      let isNaoConformeChecked = false;
+
+      if (savedItem) {
+        if (savedItem.conforme === true || statusValue === 'conforme') {
+          isConformeChecked = true;
+        } else if (savedItem.conforme === false || statusValue === 'nao_conforme') {
+          isNaoConformeChecked = true;
+        } else if (statusValue) {
+          const legacyConforme = isItemConforme(savedItem.item || itemTitle, statusValue);
+          if (legacyConforme === true) isConformeChecked = true;
+          else if (legacyConforme === false) isNaoConformeChecked = true;
+        }
+      }
 
       let rowClass = 'hover:bg-slate-50/70';
       let motivoVisivel = false;
 
-      if (conforme === true) {
-        rowClass = 'item-sim-ativo';
-      } else if (conforme === false) {
-        rowClass = 'item-nao-ativo';
+      if (isConformeChecked) {
+        rowClass = 'item-conforme-ativo';
+      } else if (isNaoConformeChecked) {
+        rowClass = 'item-naoconforme-ativo';
         motivoVisivel = true;
-      }
-
-      let simCheckedClass = 'peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600';
-      let simLabel = '<i class="fas fa-check text-[10px] mr-1"></i> SIM';
-      
-      let naoCheckedClass = 'peer-checked:bg-rose-600 peer-checked:text-white peer-checked:border-rose-600';
-      let naoLabel = '<i class="fas fa-times text-[10px] mr-1"></i> NÃO';
-
-      let labelMotivo = 'Descreva o não cumprimento / motivo da não conformidade:';
-      let placeholderMotivo = 'Especifique detalhadamente a divergência ou ação necessária...';
-
-      if (ehDanificado) {
-        simCheckedClass = 'peer-checked:bg-rose-600 peer-checked:text-white peer-checked:border-rose-600';
-        simLabel = '<i class="fas fa-exclamation-triangle text-[10px] mr-1"></i> SIM (Danificado)';
-        
-        naoCheckedClass = 'peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600';
-        naoLabel = '<i class="fas fa-check text-[10px] mr-1"></i> NÃO (Sem Danos)';
-
-        labelMotivo = 'Descreva o que foi danificado / especifique a avaria:';
-        placeholderMotivo = 'Descreva o que foi danificado e o estado do componente...';
       }
 
       const itemRow = document.createElement('div');
@@ -708,49 +830,53 @@ function renderChecklistForm(existingData = null) {
       itemRow.id = `row-${fieldKey}`;
 
       itemRow.innerHTML = `
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div class="flex items-start space-x-2.5">
             <span class="text-xs font-semibold text-slate-400 mt-0.5">${iIdx + 1}.</span>
             <div>
-              <label class="text-sm font-medium text-slate-800 cursor-pointer select-none leading-relaxed" for="${fieldKey}-sim">
-                ${itemText}
+              <label class="text-sm font-semibold text-slate-800 cursor-pointer select-none leading-snug" for="${fieldKey}-conforme">
+                ${itemTitle}
               </label>
-              ${ehDanificado ? 
-                '<span class="inline-block ml-2 text-[10px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">Verificação de Avaria</span>' : ''}
+              ${itemCriterio ? `
+                <p class="text-[11px] text-slate-500 mt-1 flex items-center leading-normal">
+                  <i class="fas fa-info-circle text-[#007dc5]/70 mr-1.5 shrink-0 text-[10px]"></i>
+                  <span>${itemCriterio}</span>
+                </p>
+              ` : ''}
             </div>
           </div>
           <div class="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
-            <!-- Opção SIM -->
+            <!-- Opção CONFORME -->
             <label class="inline-flex items-center cursor-pointer select-none">
-              <input type="radio" name="${fieldKey}" id="${fieldKey}-sim" value="sim" ${statusValue === 'sim' ? 'checked' : ''} 
-                onchange="handleStatusChange('${fieldKey}', 'sim', ${ehDanificado})" class="sr-only peer">
-              <span class="px-3.5 py-1.5 text-xs font-semibold rounded-md border border-slate-200 text-slate-600 bg-white 
-                ${simCheckedClass} hover:border-slate-300 transition-all flex items-center space-x-1 shadow-sm">
-                ${simLabel}
+              <input type="radio" name="${fieldKey}" id="${fieldKey}-conforme" value="conforme" ${isConformeChecked ? 'checked' : ''} 
+                onchange="handleStatusChange('${fieldKey}', 'conforme')" class="sr-only peer">
+              <span class="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 text-slate-600 bg-white 
+                peer-checked:bg-emerald-600 peer-checked:text-white peer-checked:border-emerald-600 hover:border-slate-300 transition-all flex items-center space-x-1 shadow-xs">
+                <i class="fas fa-check text-[10px] mr-1"></i> CONFORME
               </span>
             </label>
 
-            <!-- Opção NÃO -->
+            <!-- Opção NÃO CONFORME -->
             <label class="inline-flex items-center cursor-pointer select-none">
-              <input type="radio" name="${fieldKey}" id="${fieldKey}-nao" value="nao" ${statusValue === 'nao' ? 'checked' : ''} 
-                onchange="handleStatusChange('${fieldKey}', 'nao', ${ehDanificado})" class="sr-only peer">
-              <span class="px-3.5 py-1.5 text-xs font-semibold rounded-md border border-slate-200 text-slate-600 bg-white 
-                ${naoCheckedClass} hover:border-slate-300 transition-all flex items-center space-x-1 shadow-sm">
-                ${naoLabel}
+              <input type="radio" name="${fieldKey}" id="${fieldKey}-nao_conforme" value="nao_conforme" ${isNaoConformeChecked ? 'checked' : ''} 
+                onchange="handleStatusChange('${fieldKey}', 'nao_conforme')" class="sr-only peer">
+              <span class="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 text-slate-600 bg-white 
+                peer-checked:bg-rose-600 peer-checked:text-white peer-checked:border-rose-600 hover:border-slate-300 transition-all flex items-center space-x-1 shadow-xs">
+                <i class="fas fa-times text-[10px] mr-1"></i> NÃO CONFORME
               </span>
             </label>
           </div>
         </div>
 
-        <!-- Campo expandido para descrição de Não Cumprimento ou O que foi danificado -->
+        <!-- Campo expandido para descrição de Não Conformidade -->
         <div id="motivo-container-${fieldKey}" class="mt-3 ${motivoVisivel ? 'block' : 'hidden'} expand-nao-field pl-5 sm:pl-7">
           <div class="p-3 bg-white/95 border border-rose-300 rounded-lg shadow-xs">
             <label class="block text-xs font-bold text-rose-800 mb-1.5 flex items-center">
               <i class="fas fa-exclamation-triangle mr-1.5 text-rose-600"></i>
-              ${labelMotivo}
+              Descreva o não cumprimento / motivo da não conformidade:
             </label>
             <textarea id="motivo-${fieldKey}" rows="2" 
-              placeholder="${placeholderMotivo}" 
+              placeholder="Especifique detalhadamente a divergência ou ação necessária..." 
               class="w-full text-xs text-slate-800 bg-slate-50/50 border border-slate-200 rounded-md p-2 focus:ring-2 focus:ring-rose-400 focus:border-rose-400 outline-none transition-all">${escapeHtml(motivoValue)}</textarea>
           </div>
         </div>
@@ -774,7 +900,7 @@ function renderChecklistForm(existingData = null) {
               <i class="fas fa-folder-open text-amber-500 mr-1"></i> Arquivos
             </button>
 
-            <span id="badge-foto-obrig-${fieldKey}" class="${ehNaoConforme ? 'inline-block' : 'hidden'} text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
+            <span id="badge-foto-obrig-${fieldKey}" class="${isNaoConformeChecked ? 'inline-block' : 'hidden'} text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
               <i class="fas fa-asterisk text-[8px] mr-1 text-rose-500"></i> Foto Obrigatória (Não Conforme)
             </span>
           </div>
@@ -791,19 +917,19 @@ function renderChecklistForm(existingData = null) {
   renderFotosContainer('observacoes');
 }
 
-// Manipulação da mudança de status (Sim / Não) com atualização dos badges de foto obrigatória
-window.handleStatusChange = function(fieldKey, value, ehDanificado) {
+// Manipulação da mudança de status (Conforme / Não Conforme) com atualização dos badges de foto obrigatória
+window.handleStatusChange = function(fieldKey, value) {
   const row = document.getElementById(`row-${fieldKey}`);
   const motivoContainer = document.getElementById(`motivo-container-${fieldKey}`);
   const motivoInput = document.getElementById(`motivo-${fieldKey}`);
   const badgeFotoObrig = document.getElementById(`badge-foto-obrig-${fieldKey}`);
 
-  const ehNaoConforme = ehDanificado ? (value === 'sim') : (value === 'nao');
+  const ehNaoConforme = (value === 'nao_conforme');
 
   if (ehNaoConforme) {
     if (row) {
-      row.classList.remove('item-sim-ativo', 'hover:bg-slate-50/70');
-      row.classList.add('item-nao-ativo');
+      row.classList.remove('item-sim-ativo', 'item-conforme-ativo', 'hover:bg-slate-50/70');
+      row.classList.add('item-nao-ativo', 'item-naoconforme-ativo');
     }
     if (motivoContainer) {
       motivoContainer.classList.remove('hidden');
@@ -817,8 +943,8 @@ window.handleStatusChange = function(fieldKey, value, ehDanificado) {
     }
   } else {
     if (row) {
-      row.classList.remove('item-nao-ativo', 'hover:bg-slate-50/70');
-      row.classList.add('item-sim-ativo');
+      row.classList.remove('item-nao-ativo', 'item-naoconforme-ativo', 'hover:bg-slate-50/70');
+      row.classList.add('item-sim-ativo', 'item-conforme-ativo');
     }
     if (motivoContainer) {
       motivoContainer.classList.add('hidden');
@@ -836,14 +962,12 @@ window.marcarTudoConforme = function(sectionId) {
   const section = CHECKLIST_SECTIONS.find(s => s.id === sectionId);
   if (!section) return;
 
-  section.items.forEach((itemText, idx) => {
+  section.items.forEach((itemObj, idx) => {
     const key = `${sectionId}_item_${idx}`;
-    const ehDanificado = isItemDanificado(itemText);
-    const conformeValue = ehDanificado ? 'nao' : 'sim';
-    const radio = document.getElementById(`${key}-${conformeValue}`);
+    const radio = document.getElementById(`${key}-conforme`);
     if (radio) {
       radio.checked = true;
-      handleStatusChange(key, conformeValue, ehDanificado);
+      handleStatusChange(key, 'conforme');
     }
   });
 };
@@ -854,20 +978,19 @@ function updateFormProgressCounters() {
   let totalNaoConformes = 0;
 
   CHECKLIST_SECTIONS.forEach(sec => {
-    sec.items.forEach((itemText, idx) => {
+    sec.items.forEach((itemObj, idx) => {
       totalItems++;
       const key = `${sec.id}_item_${idx}`;
-      const sim = document.getElementById(`${key}-sim`);
-      const nao = document.getElementById(`${key}-nao`);
+      const confRadio = document.getElementById(`${key}-conforme`);
+      const naoConfRadio = document.getElementById(`${key}-nao_conforme`);
       
       let status = null;
-      if (sim && sim.checked) status = 'sim';
-      if (nao && nao.checked) status = 'nao';
+      if (confRadio && confRadio.checked) status = 'conforme';
+      if (naoConfRadio && naoConfRadio.checked) status = 'nao_conforme';
 
       if (status !== null) {
         preenchidos++;
-        const conforme = isItemConforme(itemText, status);
-        if (conforme === false) {
+        if (status === 'nao_conforme') {
           totalNaoConformes++;
         }
       }
@@ -1014,39 +1137,37 @@ window.salvarRelatorio = async function(andExportPdf = false) {
 
   for (const sec of CHECKLIST_SECTIONS) {
     for (let idx = 0; idx < sec.items.length; idx++) {
-      const itemText = sec.items[idx];
+      const itemObj = sec.items[idx];
+      const itemTitle = getItemTitle(itemObj);
       const key = `${sec.id}_item_${idx}`;
-      const simRadio = document.getElementById(`${key}-sim`);
-      const naoRadio = document.getElementById(`${key}-nao`);
+      const confRadio = document.getElementById(`${key}-conforme`);
+      const naoConfRadio = document.getElementById(`${key}-nao_conforme`);
       const motivoInput = document.getElementById(`motivo-${key}`);
 
       let status = null;
-      if (simRadio && simRadio.checked) status = 'sim';
-      if (naoRadio && naoRadio.checked) status = 'nao';
+      if (confRadio && confRadio.checked) status = 'conforme';
+      if (naoConfRadio && naoConfRadio.checked) status = 'nao_conforme';
 
-      if (status !== null) {
-        const conforme = isItemConforme(itemText, status);
-        if (conforme === false) {
-          const motivo = motivoInput ? motivoInput.value.trim() : '';
-          const fotosItem = AppState.currentPhotos[key] || [];
+      if (status === 'nao_conforme') {
+        const motivo = motivoInput ? motivoInput.value.trim() : '';
+        const fotosItem = AppState.currentPhotos[key] || [];
 
-          if (!motivo) {
-            erroValidacao = {
-              msg: `O item "${itemText}" está marcado como NÃO CONFORME e requer o preenchimento da justificativa.`,
-              key: key,
-              field: 'motivo'
-            };
-            break;
-          }
+        if (!motivo) {
+          erroValidacao = {
+            msg: `O item "${itemTitle}" está marcado como NÃO CONFORME e requer o preenchimento da justificativa.`,
+            key: key,
+            field: 'motivo'
+          };
+          break;
+        }
 
-          if (fotosItem.length === 0) {
-            erroValidacao = {
-              msg: `Atenção: O item "${itemText}" está marcado como NÃO CONFORME e é OBRIGATÓRIO anexar pelo menos uma foto comprobatória da avaria/irregularidade.`,
-              key: key,
-              field: 'foto'
-            };
-            break;
-          }
+        if (fotosItem.length === 0) {
+          erroValidacao = {
+            msg: `Atenção: O item "${itemTitle}" está marcado como NÃO CONFORME e é OBRIGATÓRIO anexar pelo menos uma foto comprobatória da irregularidade.`,
+            key: key,
+            field: 'foto'
+          };
+          break;
         }
       }
     }
@@ -1058,7 +1179,7 @@ window.salvarRelatorio = async function(andExportPdf = false) {
     const rowEl = document.getElementById(`row-${erroValidacao.key}`);
     if (rowEl) {
       rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      rowEl.classList.add('item-nao-ativo', 'animate-pulse');
+      rowEl.classList.add('item-naoconforme-ativo', 'animate-pulse');
       setTimeout(() => rowEl.classList.remove('animate-pulse'), 3000);
       if (erroValidacao.field === 'motivo') {
         const motivoEl = document.getElementById(`motivo-${erroValidacao.key}`);
@@ -1078,46 +1199,43 @@ window.salvarRelatorio = async function(andExportPdf = false) {
   const pendencias = [];
 
   CHECKLIST_SECTIONS.forEach(sec => {
-    sec.items.forEach((itemText, idx) => {
+    sec.items.forEach((itemObj, idx) => {
+      const itemTitle = getItemTitle(itemObj);
       const key = `${sec.id}_item_${idx}`;
-      const simRadio = document.getElementById(`${key}-sim`);
-      const naoRadio = document.getElementById(`${key}-nao`);
+      const confRadio = document.getElementById(`${key}-conforme`);
+      const naoConfRadio = document.getElementById(`${key}-nao_conforme`);
       const motivoInput = document.getElementById(`motivo-${key}`);
 
-      const ehDanificado = isItemDanificado(itemText);
       let status = null;
+      let conforme = null;
       let motivo = '';
 
-      if (simRadio && simRadio.checked) status = 'sim';
-      if (naoRadio && naoRadio.checked) status = 'nao';
-
-      const fotosItem = AppState.currentPhotos[key] || [];
-
-      if (status !== null) {
-        const conforme = isItemConforme(itemText, status);
+      if (confRadio && confRadio.checked) {
+        status = 'conforme';
+        conforme = true;
+        totalConformes++;
+      } else if (naoConfRadio && naoConfRadio.checked) {
+        status = 'nao_conforme';
+        conforme = false;
         motivo = motivoInput ? motivoInput.value.trim() : '';
-
-        if (conforme === true) {
-          totalConformes++;
-        } else {
-          totalNaoConformes++;
-          pendencias.push({
-            secao: sec.title,
-            item: itemText,
-            motivo: motivo || (ehDanificado ? 'Componente apontado como danificado' : 'Não conformidade registrada'),
-            qtdFotos: fotosItem.length
-          });
-        }
+        totalNaoConformes++;
+        pendencias.push({
+          secao: sec.title,
+          item: itemTitle,
+          motivo: motivo || 'Não conformidade registrada',
+          qtdFotos: (AppState.currentPhotos[key] || []).length
+        });
       } else {
         naoPreenchidos++;
       }
 
+      const fotosItem = AppState.currentPhotos[key] || [];
+
       items[key] = {
         secao: sec.title,
-        item: itemText,
+        item: itemTitle,
         status: status,
-        ehDanificado: ehDanificado,
-        conforme: isItemConforme(itemText, status),
+        conforme: conforme,
         motivo: motivo,
         fotos: fotosItem
       };
@@ -1290,34 +1408,43 @@ function renderReportDetail(report) {
   let sectionsHtml = '';
   CHECKLIST_SECTIONS.forEach(sec => {
     let itemsRows = '';
-    sec.items.forEach((itemText, idx) => {
+    sec.items.forEach((itemObj, idx) => {
+      const itemTitle = getItemTitle(itemObj);
+      const itemCriterio = getItemCriterio(itemObj);
       const key = `${sec.id}_item_${idx}`;
       const itemData = report.items ? report.items[key] : null;
       const status = itemData ? itemData.status : null;
       const motivo = itemData ? itemData.motivo : '';
       const fotos = itemData ? itemData.fotos || [] : [];
-      const ehDanificado = isItemDanificado(itemText);
-      const conforme = isItemConforme(itemText, status);
+      const savedTitle = itemData && itemData.item ? itemData.item : itemTitle;
+
+      let conforme = null;
+      if (itemData) {
+        if (itemData.conforme !== undefined && itemData.conforme !== null) {
+          conforme = itemData.conforme;
+        } else if (status === 'conforme') {
+          conforme = true;
+        } else if (status === 'nao_conforme') {
+          conforme = false;
+        } else if (status) {
+          conforme = isItemConforme(savedTitle, status);
+        }
+      }
 
       let badgeStatus = '<span class="text-xs text-slate-400">N/A</span>';
-      if (status !== null) {
-        if (ehDanificado) {
-          badgeStatus = status === 'nao' ? 
-            '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800"><i class="fas fa-check mr-1"></i> NÃO (Sem Danos)</span>' :
-            '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-800"><i class="fas fa-exclamation-triangle mr-1"></i> SIM (Danificado)</span>';
-        } else {
-          badgeStatus = status === 'sim' ? 
-            '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-100 text-emerald-800"><i class="fas fa-check mr-1"></i> SIM</span>' : 
-            '<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-100 text-rose-800"><i class="fas fa-times mr-1"></i> NÃO</span>';
-        }
+      if (conforme === true) {
+        badgeStatus = '<span class="inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300"><i class="fas fa-check mr-1 text-[10px]"></i> CONFORME</span>';
+      } else if (conforme === false) {
+        badgeStatus = '<span class="inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300"><i class="fas fa-times mr-1 text-[10px]"></i> NÃO CONFORME</span>';
       }
 
       itemsRows += `
         <tr class="border-b border-slate-100 hover:bg-slate-50/50 ${conforme === false ? 'bg-rose-50/40' : ''}">
           <td class="py-2.5 px-4 text-xs font-medium text-slate-800">
-            <div>${itemText}</div>
+            <div class="font-semibold text-slate-800">${savedTitle}</div>
+            ${itemCriterio ? `<div class="text-[11px] text-slate-500 mt-0.5">${itemCriterio}</div>` : ''}
             ${fotos.length > 0 ? 
-              `<span class="inline-flex items-center text-[10px] text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded mt-0.5 font-semibold">
+              `<span class="inline-flex items-center text-[10px] text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.5 rounded mt-1 font-semibold">
                 <i class="fas fa-camera mr-1"></i> ${fotos.length} foto(s)
               </span>` : ''}
           </td>
@@ -1347,8 +1474,8 @@ function renderReportDetail(report) {
             <thead>
               <tr class="bg-slate-100/50 text-[11px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                 <th class="py-2 px-4">Item de Verificação</th>
-                <th class="py-2 px-4 text-center w-36">Status</th>
-                <th class="py-2 px-4">Apontamento / Detalhe do Dano</th>
+                <th class="py-2 px-4 text-center w-36">Status / Avaliação</th>
+                <th class="py-2 px-4">Apontamento / Motivo da Não Conformidade</th>
               </tr>
             </thead>
             <tbody>
@@ -1732,25 +1859,40 @@ window.exportarPDF = async function() {
       currentY += 7.8;
 
       // Monta as linhas da tabela desta seção
-      const rowsData = sec.items.map((itemText, idx) => {
+      const rowsData = sec.items.map((itemObj, idx) => {
+        const itemTitle = getItemTitle(itemObj);
+        const itemCriterio = getItemCriterio(itemObj);
         const key = `${sec.id}_item_${idx}`;
         const item = report.items ? report.items[key] : null;
         const status = item ? item.status : null;
         const motivo = item ? item.motivo : '';
         const fotos = item ? item.fotos || [] : [];
-        const ehDanificado = isItemDanificado(itemText);
-        const conforme = isItemConforme(itemText, status);
+        const savedTitle = item && item.item ? item.item : itemTitle;
 
-        let statusText = '-';
-        if (status !== null) {
-          if (ehDanificado) {
-            statusText = status === 'nao' ? 'NÃO (Sem Danos)' : 'SIM (Danificado)';
-          } else {
-            statusText = status === 'sim' ? 'SIM (Conforme)' : 'NÃO (Inconforme)';
+        let conforme = null;
+        if (item) {
+          if (item.conforme !== undefined && item.conforme !== null) {
+            conforme = item.conforme;
+          } else if (status === 'conforme') {
+            conforme = true;
+          } else if (status === 'nao_conforme') {
+            conforme = false;
+          } else if (status) {
+            conforme = isItemConforme(savedTitle, status);
           }
         }
 
-        let itemDisplay = itemText;
+        let statusText = '-';
+        if (conforme === true) {
+          statusText = 'CONFORME';
+        } else if (conforme === false) {
+          statusText = 'NÃO CONFORME';
+        }
+
+        let itemDisplay = savedTitle;
+        if (itemCriterio) {
+          itemDisplay += `\n(${itemCriterio})`;
+        }
         if (fotos.length > 0) {
           itemDisplay += `\n[📷 ${fotos.length} foto(s) anexada(s)]`;
         }
@@ -1949,12 +2091,43 @@ window.exportarPDF = async function() {
         doc.setFillColor(248, 250, 252);
         doc.roundedRect(cardX + 2, photoY + 2, 84, 46, 1.2, 1.2, 'F');
 
-        // Desenha a imagem
+        // Desenha a imagem mantendo rigorosamente a proporção original (sem esticar)
+        let imgW = 82;
+        let imgH = 44;
+        let imgX = cardX + 3;
+        let imgY = photoY + 3;
+
         try {
-          doc.addImage(f.src, 'JPEG', cardX + 3, photoY + 3, 82, 44);
+          const imgProps = doc.getImageProperties(f.src);
+          if (imgProps && imgProps.width && imgProps.height) {
+            const maxW = 82;
+            const maxH = 44;
+            const imgAspect = imgProps.width / imgProps.height;
+            const boxAspect = maxW / maxH; // 82 / 44 ≈ 1.8636
+
+            if (imgAspect > boxAspect) {
+              // Imagem panorâmica / horizontal larga
+              imgW = maxW;
+              imgH = maxW / imgAspect;
+              imgX = cardX + 3;
+              imgY = photoY + 3 + ((maxH - imgH) / 2);
+            } else {
+              // Imagem vertical (retrato) ou quadrada
+              imgH = maxH;
+              imgW = maxH * imgAspect;
+              imgY = photoY + 3;
+              imgX = cardX + 3 + ((maxW - imgW) / 2);
+            }
+          }
+        } catch (e) {
+          console.warn("Erro ao calcular proporção da foto no PDF:", e);
+        }
+
+        try {
+          doc.addImage(f.src, 'JPEG', imgX, imgY, imgW, imgH);
         } catch (e) {
           try {
-            doc.addImage(f.src, 'PNG', cardX + 3, photoY + 3, 82, 44);
+            doc.addImage(f.src, 'PNG', imgX, imgY, imgW, imgH);
           } catch (err) {}
         }
 
@@ -2074,30 +2247,41 @@ window.exportarExcel = function() {
   rows.push([]);
 
   // Cabeçalho da tabela de itens
-  rows.push(["Sessão", "Item de Conferência", "Status", "Conformidade", "O que foi danificado / Não Cumprimento", "Qtd Fotos Anexadas"]);
+  rows.push(["Sessão", "Item de Conferência", "Critério de Aceite", "Conformidade", "Apontamento / Divergência", "Qtd Fotos Anexadas"]);
 
   CHECKLIST_SECTIONS.forEach(sec => {
-    sec.items.forEach((itemText, idx) => {
+    sec.items.forEach((itemObj, idx) => {
+      const itemTitle = getItemTitle(itemObj);
+      const itemCriterio = getItemCriterio(itemObj);
       const key = `${sec.id}_item_${idx}`;
       const item = report.items ? report.items[key] : null;
       const status = item ? item.status : null;
-      const ehDanificado = isItemDanificado(itemText);
-      const conforme = isItemConforme(itemText, status);
+      const savedTitle = item && item.item ? item.item : itemTitle;
       const qtdFotos = item && item.fotos ? item.fotos.length : 0;
 
-      let statusDisplay = '-';
-      if (status !== null) {
-        if (ehDanificado) {
-          statusDisplay = status === 'nao' ? 'NÃO (Sem Danos)' : 'SIM (Danificado)';
-        } else {
-          statusDisplay = status === 'sim' ? 'SIM' : 'NÃO';
+      let conforme = null;
+      if (item) {
+        if (item.conforme !== undefined && item.conforme !== null) {
+          conforme = item.conforme;
+        } else if (status === 'conforme') {
+          conforme = true;
+        } else if (status === 'nao_conforme') {
+          conforme = false;
+        } else if (status) {
+          conforme = isItemConforme(savedTitle, status);
         }
       }
 
-      const conformidadeDisplay = conforme === true ? 'CONFORME' : (conforme === false ? 'NÃO CONFORME' : '-');
+      let conformidadeDisplay = '-';
+      if (conforme === true) {
+        conformidadeDisplay = 'CONFORME';
+      } else if (conforme === false) {
+        conformidadeDisplay = 'NÃO CONFORME';
+      }
+
       const motivo = item ? item.motivo || '' : '';
 
-      rows.push([sec.title, itemText, statusDisplay, conformidadeDisplay, motivo, qtdFotos > 0 ? `${qtdFotos} foto(s)` : '0']);
+      rows.push([sec.title, savedTitle, itemCriterio, conformidadeDisplay, motivo, qtdFotos > 0 ? `${qtdFotos} foto(s)` : '0']);
     });
   });
 
